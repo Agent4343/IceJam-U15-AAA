@@ -19,6 +19,7 @@ button { background:#4da3ff; font-weight:700; margin-top:10px; cursor:pointer; c
 button:active { background:#3d8ae0; }
 button.secondary { background:#2a3350; }
 button.danger { background:#dc3545; }
+button.live { background:#1e8e3e; }
 .row { display:flex; gap:8px; }
 .row > * { flex:1; }
 table { width:100%; border-collapse:collapse; margin-top:10px; }
@@ -39,9 +40,13 @@ th { color:#9fb0cf; font-weight:500; }
 .msg { padding:12px; border-radius:8px; margin-top:10px; font-size:14px; }
 .msg.success { background:#1e8e3e33; color:#4ade80; }
 .msg.error { background:#dc354533; color:#f87171; }
+.msg.info { background:#4da3ff22; color:#4da3ff; }
 .header { display:flex; justify-content:space-between; align-items:center; }
 .header-links { display:flex; gap:8px; }
 .header-links a { background:#2a3350; color:#fff; padding:8px 14px; border-radius:8px; text-decoration:none; font-size:13px; font-weight:600; }
+.live-badge { display:inline-block; background:#1e8e3e; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px; }
+#live-result { margin-top:12px; max-height:300px; overflow-y:auto; }
+#live-result table { font-size:12px; }
 </style>
 </head>
 
@@ -57,9 +62,17 @@ th { color:#9fb0cf; font-weight:500; }
     </div>
   </div>
 
+  <!-- Live Data Card -->
+  <div class="card">
+    <div class="card-title">Live from IceJam.ca <span class="live-badge">LIVE</span></div>
+    <button class="live" onclick="fetchLive()">Fetch Live Standings</button>
+    <div id="live-status"></div>
+    <div id="live-result"></div>
+  </div>
+
   <div class="card">
     <div class="tabs">
-      <div class="tab active" onclick="showTab('standings')">Standings</div>
+      <div class="tab active" onclick="showTab('standings')">My Standings</div>
       <div class="tab" onclick="showTab('addgame')">Add Game</div>
     </div>
 
@@ -100,7 +113,7 @@ th { color:#9fb0cf; font-weight:500; }
   </div>
 
   <div class="card">
-    <div class="card-title">Standings <span id="games-count" class="small"></span></div>
+    <div class="card-title">My Standings <span id="games-count" class="small"></span></div>
     <table>
       <thead>
         <tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>PTS</th></tr>
@@ -126,6 +139,50 @@ function showTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   event.target.classList.add('active');
   document.getElementById(name + '-panel').classList.add('active');
+}
+
+async function fetchLive() {
+  const status = document.getElementById("live-status");
+  const result = document.getElementById("live-result");
+
+  status.innerHTML = '<div class="msg info">Fetching from icejam.ca...</div>';
+  result.innerHTML = '';
+
+  try {
+    const r = await fetch('/api/scrape');
+    const d = await r.json();
+
+    if (d.ok && d.standings && d.standings.length > 0) {
+      status.innerHTML = `<div class="msg success">Connected! Found ${d.teams_found} teams</div>`;
+
+      let html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>OTL</th><th>PTS</th><th>GF</th><th>GA</th></tr></thead><tbody>';
+      d.standings.forEach((t, i) => {
+        const isHitmen = t.team.toLowerCase().includes('hitmen');
+        html += `<tr class="${isHitmen ? 'hitmen' : ''}">
+          <td>${i+1}</td>
+          <td>${t.team}</td>
+          <td>${t.gp}</td>
+          <td>${t.w}</td>
+          <td>${t.l}</td>
+          <td>${t.otl}</td>
+          <td><b>${t.pts}</b></td>
+          <td>${t.gf}</td>
+          <td>${t.ga}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      result.innerHTML = html;
+    } else if (d.ok) {
+      status.innerHTML = `<div class="msg info">Connected to ${d.url}<br>Tables found: ${d.tables_found || 0}</div>`;
+      if (d.standings && d.standings.length === 0) {
+        result.innerHTML = '<div class="small">No standings data yet (tournament may not have started)</div>';
+      }
+    } else {
+      status.innerHTML = `<div class="msg error">Could not connect: ${d.error || 'Unknown error'}</div>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="msg error">Network error: ${e.message}</div>`;
+  }
 }
 
 async function update() {

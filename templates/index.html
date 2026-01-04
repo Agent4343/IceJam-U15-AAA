@@ -10,12 +10,33 @@ body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; back
 .container { max-width:720px; margin:auto; padding:16px; }
 h1 { margin:0; font-size:22px; }
 .card { background:#121a2a; border-radius:14px; padding:16px; margin-top:12px; }
-button,input { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; }
-button { background:#4da3ff; font-weight:700; margin-top:10px; }
+.card-title { font-size:14px; font-weight:600; margin-bottom:12px; color:#4da3ff; }
+button,input,select { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; box-sizing:border-box; }
+input,select { background:#1a2538; color:#fff; margin-bottom:8px; }
+button { background:#4da3ff; font-weight:700; margin-top:10px; cursor:pointer; }
+button:active { background:#3d8ae0; }
+button.secondary { background:#2a3350; }
+button.danger { background:#dc3545; }
+.row { display:flex; gap:8px; }
+.row > * { flex:1; }
 table { width:100%; border-collapse:collapse; margin-top:10px; }
-th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; }
+th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; text-align:left; }
+th { color:#9fb0cf; font-weight:500; }
 .hitmen { background:#1e8e3e33; font-weight:700; }
 .small { color:#9fb0cf; font-size:12px; }
+.tabs { display:flex; gap:8px; margin-bottom:12px; }
+.tab { flex:1; padding:10px; text-align:center; background:#1a2538; border-radius:8px; cursor:pointer; font-size:14px; }
+.tab.active { background:#4da3ff; }
+.panel { display:none; }
+.panel.active { display:block; }
+.score-input { font-size:24px; text-align:center; font-weight:700; }
+.vs { text-align:center; padding:8px; color:#9fb0cf; font-size:14px; }
+.checkbox-row { display:flex; align-items:center; gap:8px; padding:8px 0; }
+.checkbox-row input { width:auto; }
+.checkbox-row label { color:#9fb0cf; font-size:14px; }
+.msg { padding:12px; border-radius:8px; margin-top:10px; font-size:14px; }
+.msg.success { background:#1e8e3e33; color:#4ade80; }
+.msg.error { background:#dc354533; color:#f87171; }
 </style>
 </head>
 
@@ -25,41 +46,154 @@ th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; }
   <div class="small">Mobile standings tracker</div>
 
   <div class="card">
-    <input id="team" value="{{ default_team }}">
-    <button onclick="update()">Update Standings</button>
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('standings')">Standings</div>
+      <div class="tab" onclick="showTab('addgame')">Add Game</div>
+    </div>
+
+    <!-- Standings Panel -->
+    <div id="standings-panel" class="panel active">
+      <input id="team" value="{{ default_team }}" placeholder="Track team...">
+      <button onclick="update()">Update Standings</button>
+    </div>
+
+    <!-- Add Game Panel -->
+    <div id="addgame-panel" class="panel">
+      <input id="team_a" placeholder="Home Team" value="">
+      <input id="score_a" type="number" min="0" class="score-input" placeholder="0" value="">
+      <div class="vs">vs</div>
+      <input id="score_b" type="number" min="0" class="score-input" placeholder="0" value="">
+      <input id="team_b" placeholder="Away Team" value="">
+      <div class="checkbox-row">
+        <input type="checkbox" id="ot">
+        <label for="ot">Overtime / Shootout</label>
+      </div>
+      <button onclick="addGame()">Add Game</button>
+      <div id="game-msg"></div>
+    </div>
   </div>
 
   <div class="card">
-    <div class="small">Standings</div>
+    <div class="card-title">Standings <span id="games-count" class="small"></span></div>
     <table>
       <thead>
-        <tr><th>Rank</th><th>Team</th></tr>
+        <tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>PTS</th></tr>
       </thead>
       <tbody id="rows">
-        <tr><td colspan="2" class="small">Tap Update</td></tr>
+        <tr><td colspan="7" class="small">Tap Update Standings</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button class="secondary" onclick="listGames()">View Games</button>
+      <button class="danger" onclick="clearGames()">Clear All</button>
+    </div>
+    <div id="games-list"></div>
   </div>
 </div>
 
 <script>
-async function update(){
-  const team=document.getElementById("team").value;
-  const r=await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
-  const d=await r.json();
-  const rows=document.getElementById("rows");
-  rows.innerHTML="";
-  if(!d.standings.length){
-    rows.innerHTML="<tr><td colspan='2' class='small'>No games yet</td></tr>";
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(name + '-panel').classList.add('active');
+}
+
+async function update() {
+  const team = document.getElementById("team").value;
+  const r = await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
+  const d = await r.json();
+  const rows = document.getElementById("rows");
+  const count = document.getElementById("games-count");
+
+  count.textContent = d.games_count ? `(${d.games_count} games)` : '';
+  rows.innerHTML = "";
+
+  if (!d.standings.length) {
+    rows.innerHTML = "<tr><td colspan='7' class='small'>No games yet - add some!</td></tr>";
     return;
   }
-  d.standings.forEach(x=>{
-    const tr=document.createElement("tr");
-    if(x.team.toLowerCase().includes("hitmen")) tr.className="hitmen";
-    tr.innerHTML=`<td>${x.rank}</td><td>${x.team}</td>`;
+
+  d.standings.forEach(x => {
+    const tr = document.createElement("tr");
+    if (x.team.toLowerCase().includes("hitmen")) tr.className = "hitmen";
+    tr.innerHTML = `<td>${x.rank}</td><td>${x.team}</td><td>${x.gp}</td><td>${x.w}</td><td>${x.l}</td><td>${x.t}</td><td><b>${x.pts}</b></td>`;
     rows.appendChild(tr);
   });
 }
+
+async function addGame() {
+  const msg = document.getElementById("game-msg");
+  const team_a = document.getElementById("team_a").value.trim();
+  const team_b = document.getElementById("team_b").value.trim();
+  const goals_a = parseInt(document.getElementById("score_a").value) || 0;
+  const goals_b = parseInt(document.getElementById("score_b").value) || 0;
+  const ot = document.getElementById("ot").checked;
+
+  if (!team_a || !team_b) {
+    msg.innerHTML = '<div class="msg error">Enter both team names</div>';
+    return;
+  }
+
+  const r = await fetch('/api/games', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ team_a, team_b, goals_a, goals_b, ot })
+  });
+  const d = await r.json();
+
+  if (d.ok) {
+    msg.innerHTML = `<div class="msg success">Added: ${team_a} ${goals_a} - ${goals_b} ${team_b}</div>`;
+    document.getElementById("score_a").value = "";
+    document.getElementById("score_b").value = "";
+    document.getElementById("ot").checked = false;
+    update();
+  } else {
+    msg.innerHTML = '<div class="msg error">Error adding game</div>';
+  }
+}
+
+async function listGames() {
+  const r = await fetch('/api/games');
+  const d = await r.json();
+  const list = document.getElementById("games-list");
+
+  if (!d.games.length) {
+    list.innerHTML = '<div class="small" style="margin-top:10px">No games added yet</div>';
+    return;
+  }
+
+  let html = '<table style="margin-top:10px"><tr><th>Game</th><th>Score</th><th></th></tr>';
+  d.games.forEach(g => {
+    const otTag = g.ot ? ' (OT)' : '';
+    html += `<tr>
+      <td class="small">${g.team_a} vs ${g.team_b}</td>
+      <td>${g.goals_a}-${g.goals_b}${otTag}</td>
+      <td><span style="color:#dc3545;cursor:pointer" onclick="deleteGame('${g.game_id}')">X</span></td>
+    </tr>`;
+  });
+  html += '</table>';
+  list.innerHTML = html;
+}
+
+async function deleteGame(id) {
+  await fetch(`/api/games/${id}`, { method: 'DELETE' });
+  listGames();
+  update();
+}
+
+async function clearGames() {
+  if (!confirm('Clear all games?')) return;
+  await fetch('/api/games', { method: 'DELETE' });
+  document.getElementById("games-list").innerHTML = '';
+  update();
+}
+
+// Auto-load standings on page load
+update();
 </script>
 </body>
 </html>

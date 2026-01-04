@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IceJam U15 AAA</title>
+
+<style>
+body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; background:#0b0f17; color:#fff; }
+.container { max-width:720px; margin:auto; padding:16px; }
+h1 { margin:0; font-size:22px; }
+.card { background:#121a2a; border-radius:14px; padding:16px; margin-top:12px; }
+button,input { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; }
+button { background:#4da3ff; font-weight:700; margin-top:10px; }
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; }
+.hitmen { background:#1e8e3e33; font-weight:700; }
+.small { color:#9fb0cf; font-size:12px; }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>IceJam U15 AAA</h1>
+  <div class="small">Mobile standings tracker</div>
+
+  <div class="card">
+    <input id="team" value="{{ default_team }}">
+    <button onclick="update()">Update Standings</button>
+  </div>
+
+  <div class="card">
+    <div class="small">Standings</div>
+    <table>
+      <thead>
+        <tr><th>Rank</th><th>Team</th></tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="2" class="small">Tap Update</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function update(){
+  const team=document.getElementById("team").value;
+  const r=await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
+  const d=await r.json();
+  const rows=document.getElementById("rows");
+  rows.innerHTML="";
+  if(!d.standings.length){
+    rows.innerHTML="<tr><td colspan='2' class='small'>No games yet</td></tr>";
+    return;
+  }
+  d.standings.forEach(x=>{
+    const tr=document.createElement("tr");
+    if(x.team.toLowerCase().includes("hitmen")) tr.className="hitmen";
+    tr.innerHTML=`<td>${x.rank}</td><td>${x.team}</td>`;
+    rows.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>

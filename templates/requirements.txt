@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pandas
+beautifulsoup4
+lxml
+requests
+jinja2

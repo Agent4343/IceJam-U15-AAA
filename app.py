@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
+SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
 
 # All 26 teams from IceJam U15 AAA 2026
@@ -530,6 +531,100 @@ def scrape_icejam() -> Dict:
         }
 
 
+def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
+    """Scrape schedule data from icejam.ca/schedule/"""
+    try:
+        logger.info(f"Fetching {SCHEDULE_URL}")
+        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        schedule_data = []
+
+        # Find all game rows - looking for table rows or divs containing game info
+        tables = soup.find_all("table")
+        logger.info(f"Found {len(tables)} tables for schedule")
+
+        for table in tables:
+            rows = table.find_all("tr")
+            for row in rows:
+                cells = row.find_all(["td", "th"])
+                row_text = row.get_text(" ", strip=True).lower()
+
+                # Check if this row contains the tracked team
+                if team.lower() in row_text or "hitmen" in row_text:
+                    try:
+                        # Extract game info from the row
+                        game_info = {
+                            "raw": row.get_text(" | ", strip=True),
+                            "cells": [c.get_text(strip=True) for c in cells]
+                        }
+
+                        # Try to parse structured data
+                        text_parts = row.get_text(" ", strip=True).split()
+
+                        # Look for game number (usually a standalone number)
+                        game_num = ""
+                        for part in text_parts:
+                            if part.isdigit() and len(part) <= 3:
+                                game_num = part
+                                break
+
+                        # Look for time pattern (HH:MMam/pm)
+                        time_str = ""
+                        for part in text_parts:
+                            if ("am" in part.lower() or "pm" in part.lower()) and ":" in part:
+                                time_str = part
+                                break
+
+                        # Look for date pattern
+                        date_str = ""
+                        days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                        for i, part in enumerate(text_parts):
+                            if part.lower().rstrip(",") in days:
+                                # Get day and following parts for date
+                                date_str = " ".join(text_parts[i:i+3])
+                                break
+
+                        schedule_data.append({
+                            "game_num": game_num,
+                            "time": time_str,
+                            "date": date_str,
+                            "details": game_info["raw"][:200]
+                        })
+
+                    except Exception as e:
+                        logger.warning(f"Could not parse schedule row: {e}")
+
+        # Also check for div-based layouts
+        game_divs = soup.find_all("div", class_=lambda x: x and "game" in x.lower() if x else False)
+        for div in game_divs:
+            div_text = div.get_text(" ", strip=True).lower()
+            if team.lower() in div_text or "hitmen" in div_text:
+                schedule_data.append({
+                    "game_num": "",
+                    "time": "",
+                    "date": "",
+                    "details": div.get_text(" | ", strip=True)[:200]
+                })
+
+        return {
+            "ok": True,
+            "url": SCHEDULE_URL,
+            "team": team,
+            "games_found": len(schedule_data),
+            "schedule": schedule_data
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Schedule scrape error: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "url": SCHEDULE_URL
+        }
+
+
 # ============ PAGE ROUTES ============
 
 @app.get("/", response_class=HTMLResponse)
@@ -637,3 +732,9 @@ def clear_games():
 def scrape():
     """Scrape standings from icejam.ca/standings/"""
     return scrape_icejam()
+
+
+@app.get("/api/schedule")
+def schedule(team: str = Query(DEFAULT_TEAM)):
+    """Scrape schedule from icejam.ca/schedule/"""
+    return scrape_schedule(team)

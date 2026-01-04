@@ -65,9 +65,20 @@ th { color:#9fb0cf; font-weight:500; }
   <!-- Live Data Card -->
   <div class="card">
     <div class="card-title">Live from IceJam.ca <span class="live-badge">LIVE</span></div>
-    <button class="live" onclick="fetchLive()">Fetch Live Standings</button>
+    <div class="row">
+      <button class="live" onclick="fetchLive()">Fetch Standings</button>
+      <button class="live" onclick="fetchSchedule()">Fetch Schedule</button>
+    </div>
     <div id="live-status"></div>
     <div id="live-result"></div>
+  </div>
+
+  <!-- Schedule Card -->
+  <div class="card">
+    <div class="card-title">📅 Upcoming Games</div>
+    <div id="schedule-result">
+      <div class="small">Tap "Fetch Schedule" above to load games</div>
+    </div>
   </div>
 
   <div class="card">
@@ -204,6 +215,42 @@ async function fetchLive() {
       if (d.standings && d.standings.length === 0) {
         result.innerHTML = '<div class="small">No standings data yet (tournament may not have started)</div>';
       }
+    } else {
+      status.innerHTML = `<div class="msg error">Could not connect: ${d.error || 'Unknown error'}</div>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="msg error">Network error: ${e.message}</div>`;
+  }
+}
+
+async function fetchSchedule() {
+  const status = document.getElementById("live-status");
+  const result = document.getElementById("schedule-result");
+  const team = document.getElementById("team").value;
+
+  status.innerHTML = '<div class="msg info">Fetching schedule...</div>';
+
+  try {
+    const r = await fetch(`/api/schedule?team=${encodeURIComponent(team)}`);
+    const d = await r.json();
+
+    if (d.ok && d.schedule && d.schedule.length > 0) {
+      status.innerHTML = `<div class="msg success">Found ${d.games_found} games for ${d.team}</div>`;
+
+      let html = '<table><thead><tr><th>#</th><th>Game Details</th><th>Date</th><th>Time</th></tr></thead><tbody>';
+      d.schedule.forEach((g, i) => {
+        html += `<tr>
+          <td>${g.game_num || (i+1)}</td>
+          <td class="small">${g.details}</td>
+          <td class="small">${g.date || '-'}</td>
+          <td>${g.time || '-'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      result.innerHTML = html;
+    } else if (d.ok) {
+      status.innerHTML = `<div class="msg info">Connected to ${d.url}</div>`;
+      result.innerHTML = '<div class="small">No schedule found for ' + d.team + '</div>';
     } else {
       status.innerHTML = `<div class="msg error">Could not connect: ${d.error || 'Unknown error'}</div>`;
     }

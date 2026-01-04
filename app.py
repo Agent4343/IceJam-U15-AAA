@@ -45,8 +45,7 @@ class TeamStats:
     first_goal_time: Optional[int] = None
 
     def goal_average(self) -> float:
-        d = self.gf + self.ga
-        return (self.gf / d) if d else 0.0
+        return (self.gf / self.gp) if self.gp else 0.0
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")

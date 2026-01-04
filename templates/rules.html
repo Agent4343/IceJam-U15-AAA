@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournament Rules - IceJam U15 AAA</title>
+
+<style>
+body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; background:#0b0f17; color:#fff; }
+.container { max-width:720px; margin:auto; padding:16px; padding-bottom:80px; }
+h1 { margin:0; font-size:22px; }
+h2 { font-size:18px; color:#4da3ff; margin-top:24px; margin-bottom:12px; border-bottom:1px solid #2a3350; padding-bottom:8px; }
+h3 { font-size:15px; color:#9fb0cf; margin-top:16px; margin-bottom:8px; }
+.card { background:#121a2a; border-radius:14px; padding:16px; margin-top:12px; }
+.small { color:#9fb0cf; font-size:12px; }
+table { width:100%; border-collapse:collapse; margin:12px 0; }
+th,td { padding:10px 8px; border-bottom:1px solid #2a3350; font-size:14px; text-align:left; }
+th { background:#1a2538; color:#4da3ff; font-weight:600; }
+.highlight { background:#1e8e3e22; }
+ul { padding-left:20px; margin:8px 0; }
+li { margin:6px 0; font-size:14px; line-height:1.5; }
+.formula { background:#1a2538; padding:16px; border-radius:8px; font-family:monospace; font-size:14px; margin:12px 0; }
+.formula .example { color:#9fb0cf; margin-top:8px; }
+.nav { position:fixed; bottom:0; left:0; right:0; background:#121a2a; padding:12px 16px; border-top:1px solid #2a3350; }
+.nav-inner { max-width:720px; margin:auto; display:flex; gap:8px; }
+.nav a { flex:1; text-align:center; padding:12px; background:#4da3ff; color:#fff; text-decoration:none; border-radius:10px; font-weight:600; font-size:14px; }
+.step { display:inline-block; background:#4da3ff; color:#fff; width:24px; height:24px; border-radius:50%; text-align:center; line-height:24px; font-size:12px; font-weight:700; margin-right:8px; }
+.tag { display:inline-block; background:#2a3350; padding:2px 8px; border-radius:4px; font-size:12px; margin-left:8px; }
+.tag.win { background:#1e8e3e33; color:#4ade80; }
+.tag.loss { background:#dc354533; color:#f87171; }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>IceJam U15 AAA</h1>
+  <div class="small">2026 Tournament Rules</div>
+
+  <div class="card">
+    <h2>Game Format</h2>
+    <table>
+      <tr>
+        <th>Phase</th>
+        <th>Periods</th>
+        <th>Overtime</th>
+      </tr>
+      <tr>
+        <td>Round Robin</td>
+        <td>15-15-20 min</td>
+        <td>5 min 3v3, then tie</td>
+      </tr>
+      <tr>
+        <td>Playoffs</td>
+        <td>15-15-20 min</td>
+        <td>10 min 3v3, then shootout</td>
+      </tr>
+      <tr>
+        <td>Championship</td>
+        <td>15-15-20 min</td>
+        <td>10 min 3v3, then 20 min periods</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Points System</h2>
+    <table>
+      <tr>
+        <th>Result</th>
+        <th>Winner</th>
+        <th>Loser</th>
+      </tr>
+      <tr class="highlight">
+        <td>Regulation Win</td>
+        <td><b>2 pts</b> <span class="tag win">W</span></td>
+        <td>0 pts <span class="tag loss">L</span></td>
+      </tr>
+      <tr>
+        <td>Overtime Win</td>
+        <td><b>2 pts</b> <span class="tag win">OTW</span></td>
+        <td>1 pt <span class="tag">OTL</span></td>
+      </tr>
+      <tr>
+        <td>Tie (round robin)</td>
+        <td>1 pt</td>
+        <td>1 pt</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Key Rules</h2>
+    <ul>
+      <li><b>Mercy Rule:</b> 6+ goal lead after 2nd period = running clock</li>
+      <li><b>Goal Differential Cap:</b> Max +7 per game for standings</li>
+      <li><b>Timeouts:</b> One 30-second timeout per game</li>
+      <li><b>Jerseys:</b> Home team wears white</li>
+      <li><b>No Protests:</b> Tournament committee decisions are final</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Tiebreaker Rules</h2>
+    <p class="small">When teams are tied in points, go through these steps in order:</p>
+
+    <h3>Two Teams Tied</h3>
+    <table>
+      <tr><td><span class="step">1</span>Head-to-head result</td></tr>
+      <tr><td><span class="step">2</span>Most wins</td></tr>
+      <tr><td><span class="step">3</span>Goal average (formula below)</td></tr>
+      <tr><td><span class="step">4</span>Fewest goals against</td></tr>
+      <tr><td><span class="step">5</span>Most goals for</td></tr>
+      <tr><td><span class="step">6</span>Fewest penalty minutes</td></tr>
+      <tr><td><span class="step">7</span>First goal in head-to-head game</td></tr>
+      <tr><td><span class="step">8</span>Fastest first goal of tournament</td></tr>
+      <tr><td><span class="step">9</span>Coin toss</td></tr>
+    </table>
+
+    <h3>Three or More Teams Tied</h3>
+    <table>
+      <tr><td><span class="step">1</span>Record among tied teams only</td></tr>
+      <tr><td><span class="step">2</span>Most wins (among tied teams)</td></tr>
+      <tr><td><span class="step">3</span>Goal average (all games)</td></tr>
+      <tr><td><span class="step">4</span>Fewest goals against (all games)</td></tr>
+      <tr><td><span class="step">5</span>Most goals for (all games)</td></tr>
+      <tr><td><span class="step">6</span>Fewest penalty minutes</td></tr>
+      <tr><td><span class="step">7</span>Fastest first goal of tournament</td></tr>
+      <tr><td><span class="step">8</span>Coin toss (odd team out wins)</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Goal Average Formula</h2>
+    <div class="formula">
+      Goal Average = Goals For / (Goals For + Goals Against)
+      <div class="example">
+        Example: 10 goals for, 4 against<br>
+        10 / (10 + 4) = 10/14 = <b>0.714</b><br><br>
+        Higher percentage = Higher rank
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Playoff Seeding</h2>
+    <ul>
+      <li><b>Replacement Seeding:</b> If a lower seed beats a higher seed, they take that seed position for the rest of the tournament</li>
+      <li><b>AP Players:</b> Players on higher teams can't play for their main team until the lower team is eliminated</li>
+    </ul>
+  </div>
+</div>
+
+<div class="nav">
+  <div class="nav-inner">
+    <a href="/">← Back to Standings</a>
+  </div>
+</div>
+</body>
+</html>

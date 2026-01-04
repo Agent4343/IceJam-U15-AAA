@@ -1,18 +1,35 @@
 from __future__ import annotations
 import re
 import uuid
-from dataclasses import dataclass, field, asdict
+import logging
+from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List
 
+import requests
+from bs4 import BeautifulSoup
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from pydantic import BaseModel
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 BASE = "https://icejam.ca"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
+
+# Browser headers to avoid being blocked
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 # In-memory game storage
 games_db: Dict[str, "Game"] = {}
@@ -78,6 +95,57 @@ def points_for_game(gf: int, ga: int, ot: bool):
     if gf > ga:
         return (2, 1, 0, 0, 1 if ot else 0, 0)
     return (1, 0, 1, 0, 0, 1) if ot else (0, 0, 1, 0, 0, 0)
+
+
+def scrape_icejam() -> Dict:
+    """
+    Scrape game data from icejam.ca
+    Returns dict with games found or error message
+    """
+    try:
+        logger.info(f"Fetching {SCHEDULE_URL}")
+        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Look for game data - structure depends on actual website
+        # This is a template that will need adjustment based on actual HTML
+        games_found = []
+
+        # Try to find schedule tables or game containers
+        tables = soup.find_all("table")
+        game_divs = soup.find_all("div", class_=re.compile(r"game|match|schedule", re.I))
+
+        # Log what we found for debugging
+        logger.info(f"Found {len(tables)} tables, {len(game_divs)} game divs")
+
+        # Parse tables for game data
+        for table in tables:
+            rows = table.find_all("tr")
+            for row in rows:
+                cells = row.find_all(["td", "th"])
+                if len(cells) >= 3:
+                    # Try to extract team names and scores
+                    text = [cell.get_text(strip=True) for cell in cells]
+                    games_found.append(text)
+
+        return {
+            "ok": True,
+            "url": SCHEDULE_URL,
+            "tables_found": len(tables),
+            "game_divs_found": len(game_divs),
+            "sample_data": games_found[:10],  # First 10 rows
+            "html_preview": response.text[:2000] if len(response.text) > 0 else "Empty"
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Scrape error: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "url": SCHEDULE_URL
+        }
 
 
 def calculate_standings() -> List[dict]:
@@ -174,6 +242,8 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
+# ============ PAGE ROUTES ============
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse(
@@ -181,6 +251,16 @@ def home(request: Request):
         {"request": request, "default_team": DEFAULT_TEAM}
     )
 
+
+@app.get("/rules", response_class=HTMLResponse)
+def rules(request: Request):
+    return templates.TemplateResponse(
+        "rules.html",
+        {"request": request}
+    )
+
+
+# ============ API ROUTES ============
 
 @app.get("/api/standings")
 def standings(team: str = Query(DEFAULT_TEAM)):
@@ -243,3 +323,12 @@ def clear_games():
     """Clear all games."""
     games_db.clear()
     return {"ok": True, "message": "All games cleared"}
+
+
+@app.get("/api/scrape")
+def scrape():
+    """
+    Attempt to scrape game data from icejam.ca
+    Use this to test if the website is accessible and see its structure.
+    """
+    return scrape_icejam()

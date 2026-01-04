@@ -18,8 +18,38 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BASE = "https://icejam.ca"
-SCHEDULE_URL = f"{BASE}/schedule/"
+STANDINGS_URL = f"{BASE}/standings/"
 DEFAULT_TEAM = "Eastern Hitmen"
+
+# All 26 teams from IceJam U15 AAA 2026
+TEAMS = [
+    "Charlottetown Islanders",
+    "Dartmouth Whalers",
+    "Dieppe Flyers",
+    "Eastern AAA U15 Knights",
+    "Eastern Express",
+    "Eastern Hitmen",
+    "Eastern Thunder",
+    "Fredericton Caps",
+    "Halifax Wolverines",
+    "Harbour Rage",
+    "Joneljim Cougars",
+    "Martello Wealth Bandits",
+    "Mid-Isle Matrix",
+    "Moncton Hawks",
+    "Northern Rivermen",
+    "Ottawa Jr 67's",
+    "Prince County Warriors",
+    "Southern Rangers",
+    "The Gulls",
+    "The Novas",
+    "The Rangers",
+    "Tri-Pen Osprey",
+    "Truro Bearcats",
+    "Valley Wildcats",
+    "WearWell Bombers",
+    "Western Hurricanes",
+]
 
 # Browser headers to avoid being blocked
 HEADERS = {
@@ -99,44 +129,49 @@ def points_for_game(gf: int, ga: int, ot: bool):
 
 def scrape_icejam() -> Dict:
     """
-    Scrape game data from icejam.ca
-    Returns dict with games found or error message
+    Scrape standings data from icejam.ca/standings/
+    Returns dict with standings data or error message
     """
     try:
-        logger.info(f"Fetching {SCHEDULE_URL}")
-        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        logger.info(f"Fetching {STANDINGS_URL}")
+        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
+        standings_data = []
 
-        # Look for game data - structure depends on actual website
-        # This is a template that will need adjustment based on actual HTML
-        games_found = []
-
-        # Try to find schedule tables or game containers
+        # Find the standings table
         tables = soup.find_all("table")
-        game_divs = soup.find_all("div", class_=re.compile(r"game|match|schedule", re.I))
+        logger.info(f"Found {len(tables)} tables")
 
-        # Log what we found for debugging
-        logger.info(f"Found {len(tables)} tables, {len(game_divs)} game divs")
-
-        # Parse tables for game data
         for table in tables:
             rows = table.find_all("tr")
-            for row in rows:
+            for row in rows[1:]:  # Skip header row
                 cells = row.find_all(["td", "th"])
-                if len(cells) >= 3:
-                    # Try to extract team names and scores
-                    text = [cell.get_text(strip=True) for cell in cells]
-                    games_found.append(text)
+                if len(cells) >= 8:
+                    team_name = cells[0].get_text(strip=True)
+                    # Skip if it looks like a header
+                    if team_name.upper() == "TEAM":
+                        continue
+                    try:
+                        standings_data.append({
+                            "team": team_name,
+                            "gp": int(cells[2].get_text(strip=True) or 0),
+                            "w": int(cells[3].get_text(strip=True) or 0),
+                            "l": int(cells[4].get_text(strip=True) or 0),
+                            "otl": int(cells[5].get_text(strip=True) or 0),
+                            "pts": int(cells[6].get_text(strip=True) or 0),
+                            "gf": int(cells[7].get_text(strip=True) or 0),
+                            "ga": int(cells[8].get_text(strip=True) or 0),
+                        })
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Could not parse row: {e}")
 
         return {
             "ok": True,
-            "url": SCHEDULE_URL,
-            "tables_found": len(tables),
-            "game_divs_found": len(game_divs),
-            "sample_data": games_found[:10],  # First 10 rows
-            "html_preview": response.text[:2000] if len(response.text) > 0 else "Empty"
+            "url": STANDINGS_URL,
+            "teams_found": len(standings_data),
+            "standings": standings_data
         }
 
     except requests.exceptions.RequestException as e:
@@ -144,7 +179,7 @@ def scrape_icejam() -> Dict:
         return {
             "ok": False,
             "error": str(e),
-            "url": SCHEDULE_URL
+            "url": STANDINGS_URL
         }
 
 
@@ -248,7 +283,7 @@ def calculate_standings() -> List[dict]:
 def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "default_team": DEFAULT_TEAM}
+        {"request": request, "default_team": DEFAULT_TEAM, "teams": TEAMS}
     )
 
 
@@ -261,6 +296,12 @@ def rules(request: Request):
 
 
 # ============ API ROUTES ============
+
+@app.get("/api/teams")
+def get_teams():
+    """Get list of all teams."""
+    return {"ok": True, "teams": TEAMS}
+
 
 @app.get("/api/standings")
 def standings(team: str = Query(DEFAULT_TEAM)):
@@ -328,7 +369,7 @@ def clear_games():
 @app.get("/api/scrape")
 def scrape():
     """
-    Attempt to scrape game data from icejam.ca
-    Use this to test if the website is accessible and see its structure.
+    Scrape standings from icejam.ca/standings/
+    Returns the current official standings from the tournament website.
     """
     return scrape_icejam()

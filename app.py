@@ -1,9 +1,11 @@
 from __future__ import annotations
 import re
 import uuid
+import random
 import logging
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
+from functools import cmp_to_key
 
 import requests
 from bs4 import BeautifulSoup
@@ -75,8 +77,9 @@ class Game:
     ot: bool
     pim_a: int = 0
     pim_b: int = 0
-    first_goal_team: str = ""
-    first_goal_time_sec: Optional[int] = None
+    first_goal_team: str = ""  # Which team scored first
+    first_goal_time_sec: Optional[int] = None  # Time in seconds when first goal was scored
+    game_number: int = 0  # Order of game in tournament (for first goal tiebreaker)
 
 
 @dataclass
@@ -92,7 +95,7 @@ class TeamStats:
     gf: int = 0
     ga: int = 0
     pim: int = 0
-    first_goal_time: Optional[int] = None
+    first_goal_time: Optional[int] = None  # Earliest first goal in tournament (game_number * 10000 + seconds)
 
     def goal_average(self) -> float:
         """Tournament-specific: GF / (GF + GA), not goals per game."""
@@ -108,6 +111,8 @@ class GameInput(BaseModel):
     ot: bool = False
     pim_a: int = 0
     pim_b: int = 0
+    first_goal_team: str = ""  # "a" or "b" or team name
+    first_goal_time_sec: Optional[int] = None
 
 
 app = FastAPI()
@@ -118,7 +123,7 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
 
-def points_for_game(gf: int, ga: int, ot: bool):
+def points_for_game(gf: int, ga: int, ot: bool) -> Tuple[int, int, int, int, int, int]:
     """Returns (pts, w, l, t, otw, otl) for a team."""
     if gf == ga:
         return (1, 0, 0, 1, 0, 0)
@@ -127,70 +132,239 @@ def points_for_game(gf: int, ga: int, ot: bool):
     return (1, 0, 1, 0, 0, 1) if ot else (0, 0, 1, 0, 0, 0)
 
 
-def scrape_icejam() -> Dict:
+def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[int, int, int, str, str]:
     """
-    Scrape standings data from icejam.ca/standings/
-    Returns dict with standings data or error message
+    Get head-to-head record between two teams.
+    Returns (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_team)
     """
-    try:
-        logger.info(f"Fetching {STANDINGS_URL}")
-        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
-        response.raise_for_status()
+    team1_pts = 0
+    team2_pts = 0
+    games_played = 0
+    first_goal_winner = ""  # Team that scored first in h2h game
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        standings_data = []
+    for game in games.values():
+        if (game.team_a == team1 and game.team_b == team2) or \
+           (game.team_a == team2 and game.team_b == team1):
+            games_played += 1
 
-        # Find the standings table
-        tables = soup.find_all("table")
-        logger.info(f"Found {len(tables)} tables")
+            if game.team_a == team1:
+                pts1, _, _, _, _, _ = points_for_game(game.goals_a, game.goals_b, game.ot)
+                pts2, _, _, _, _, _ = points_for_game(game.goals_b, game.goals_a, game.ot)
+                team1_pts += pts1
+                team2_pts += pts2
+                # First goal in h2h
+                if game.first_goal_team:
+                    if game.first_goal_team.lower() == "a" or game.first_goal_team == team1:
+                        first_goal_winner = team1
+                    elif game.first_goal_team.lower() == "b" or game.first_goal_team == team2:
+                        first_goal_winner = team2
+            else:
+                pts2, _, _, _, _, _ = points_for_game(game.goals_a, game.goals_b, game.ot)
+                pts1, _, _, _, _, _ = points_for_game(game.goals_b, game.goals_a, game.ot)
+                team1_pts += pts1
+                team2_pts += pts2
+                # First goal in h2h
+                if game.first_goal_team:
+                    if game.first_goal_team.lower() == "a" or game.first_goal_team == team2:
+                        first_goal_winner = team2
+                    elif game.first_goal_team.lower() == "b" or game.first_goal_team == team1:
+                        first_goal_winner = team1
 
-        for table in tables:
-            rows = table.find_all("tr")
-            for row in rows[1:]:  # Skip header row
-                cells = row.find_all(["td", "th"])
-                if len(cells) >= 8:
-                    team_name = cells[0].get_text(strip=True)
-                    # Skip if it looks like a header
-                    if team_name.upper() == "TEAM":
-                        continue
-                    try:
-                        standings_data.append({
-                            "team": team_name,
-                            "gp": int(cells[2].get_text(strip=True) or 0),
-                            "w": int(cells[3].get_text(strip=True) or 0),
-                            "l": int(cells[4].get_text(strip=True) or 0),
-                            "otl": int(cells[5].get_text(strip=True) or 0),
-                            "pts": int(cells[6].get_text(strip=True) or 0),
-                            "gf": int(cells[7].get_text(strip=True) or 0),
-                            "ga": int(cells[8].get_text(strip=True) or 0),
-                        })
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Could not parse row: {e}")
+    return (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_winner)
 
-        return {
-            "ok": True,
-            "url": STANDINGS_URL,
-            "teams_found": len(standings_data),
-            "standings": standings_data
-        }
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Scrape error: {e}")
-        return {
-            "ok": False,
-            "error": str(e),
-            "url": STANDINGS_URL
-        }
+def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> int:
+    """
+    Compare two teams using all 9 tiebreaker rules.
+    Returns: -1 if t1 ranks higher, 1 if t2 ranks higher, 0 if still tied
+    """
+    # Primary: Points
+    if t1.pts != t2.pts:
+        return -1 if t1.pts > t2.pts else 1
+
+    # Tiebreaker 1: Head-to-head
+    h2h = get_head_to_head(t1.name, t2.name, games)
+    t1_h2h_pts, t2_h2h_pts, games_played, first_goal_winner, _ = h2h
+    if games_played > 0 and t1_h2h_pts != t2_h2h_pts:
+        return -1 if t1_h2h_pts > t2_h2h_pts else 1
+
+    # Tiebreaker 2: Most wins
+    if t1.w != t2.w:
+        return -1 if t1.w > t2.w else 1
+
+    # Tiebreaker 3: Goal average
+    t1_ga = t1.goal_average()
+    t2_ga = t2.goal_average()
+    if abs(t1_ga - t2_ga) > 0.0001:
+        return -1 if t1_ga > t2_ga else 1
+
+    # Tiebreaker 4: Fewest goals against
+    if t1.ga != t2.ga:
+        return -1 if t1.ga < t2.ga else 1
+
+    # Tiebreaker 5: Most goals for
+    if t1.gf != t2.gf:
+        return -1 if t1.gf > t2.gf else 1
+
+    # Tiebreaker 6: Fewest penalty minutes
+    if t1.pim != t2.pim:
+        return -1 if t1.pim < t2.pim else 1
+
+    # Tiebreaker 7: First goal in head-to-head game
+    if first_goal_winner:
+        if first_goal_winner == t1.name:
+            return -1
+        elif first_goal_winner == t2.name:
+            return 1
+
+    # Tiebreaker 8: Fastest first goal of tournament
+    t1_first = t1.first_goal_time if t1.first_goal_time is not None else float('inf')
+    t2_first = t2.first_goal_time if t2.first_goal_time is not None else float('inf')
+    if t1_first != t2_first:
+        return -1 if t1_first < t2_first else 1
+
+    # Tiebreaker 9: Coin toss (random)
+    return random.choice([-1, 1])
+
+
+def get_record_among_tied(teams: List[TeamStats], games: Dict[str, Game]) -> Dict[str, int]:
+    """Get points earned only in games between the tied teams."""
+    team_names = {t.name for t in teams}
+    points = {t.name: 0 for t in teams}
+
+    for game in games.values():
+        if game.team_a in team_names and game.team_b in team_names:
+            pts_a, _, _, _, _, _ = points_for_game(game.goals_a, game.goals_b, game.ot)
+            pts_b, _, _, _, _, _ = points_for_game(game.goals_b, game.goals_a, game.ot)
+            points[game.team_a] += pts_a
+            points[game.team_b] += pts_b
+
+    return points
+
+
+def get_wins_among_tied(teams: List[TeamStats], games: Dict[str, Game]) -> Dict[str, int]:
+    """Get wins earned only in games between the tied teams."""
+    team_names = {t.name for t in teams}
+    wins = {t.name: 0 for t in teams}
+
+    for game in games.values():
+        if game.team_a in team_names and game.team_b in team_names:
+            if game.goals_a > game.goals_b:
+                wins[game.team_a] += 1
+            elif game.goals_b > game.goals_a:
+                wins[game.team_b] += 1
+
+    return wins
+
+
+def sort_tied_group(teams: List[TeamStats], games: Dict[str, Game]) -> List[TeamStats]:
+    """
+    Sort a group of teams that are tied in points.
+    Handles both 2-team and 3+ team tiebreaker scenarios.
+    """
+    if len(teams) <= 1:
+        return teams
+
+    if len(teams) == 2:
+        # Use 2-team tiebreaker rules
+        result = compare_two_teams(teams[0], teams[1], games)
+        if result <= 0:
+            return teams
+        else:
+            return [teams[1], teams[0]]
+
+    # 3+ teams tied - use multi-team tiebreaker rules
+    # Step 1: Record among tied teams
+    h2h_points = get_record_among_tied(teams, games)
+
+    # Check if this separates anyone
+    max_h2h = max(h2h_points.values())
+    min_h2h = min(h2h_points.values())
+
+    if max_h2h != min_h2h:
+        # Sort by h2h points first, then recursively sort remaining ties
+        teams_sorted = sorted(teams, key=lambda t: h2h_points[t.name], reverse=True)
+
+        # Group by h2h points and recursively sort
+        result = []
+        i = 0
+        while i < len(teams_sorted):
+            current_pts = h2h_points[teams_sorted[i].name]
+            group = [teams_sorted[i]]
+            j = i + 1
+            while j < len(teams_sorted) and h2h_points[teams_sorted[j].name] == current_pts:
+                group.append(teams_sorted[j])
+                j += 1
+            result.extend(sort_tied_group(group, games))
+            i = j
+        return result
+
+    # Step 2: Most wins among tied teams
+    h2h_wins = get_wins_among_tied(teams, games)
+    max_wins = max(h2h_wins.values())
+    min_wins = min(h2h_wins.values())
+
+    if max_wins != min_wins:
+        teams_sorted = sorted(teams, key=lambda t: h2h_wins[t.name], reverse=True)
+        result = []
+        i = 0
+        while i < len(teams_sorted):
+            current_wins = h2h_wins[teams_sorted[i].name]
+            group = [teams_sorted[i]]
+            j = i + 1
+            while j < len(teams_sorted) and h2h_wins[teams_sorted[j].name] == current_wins:
+                group.append(teams_sorted[j])
+                j += 1
+            result.extend(sort_tied_group(group, games))
+            i = j
+        return result
+
+    # Step 3-8: Use remaining criteria (same as 2-team but applied to all)
+    def compare_multi(t1: TeamStats, t2: TeamStats) -> int:
+        # Step 3: Goal average (all games)
+        t1_ga = t1.goal_average()
+        t2_ga = t2.goal_average()
+        if abs(t1_ga - t2_ga) > 0.0001:
+            return -1 if t1_ga > t2_ga else 1
+
+        # Step 4: Fewest goals against
+        if t1.ga != t2.ga:
+            return -1 if t1.ga < t2.ga else 1
+
+        # Step 5: Most goals for
+        if t1.gf != t2.gf:
+            return -1 if t1.gf > t2.gf else 1
+
+        # Step 6: Fewest penalty minutes
+        if t1.pim != t2.pim:
+            return -1 if t1.pim < t2.pim else 1
+
+        # Step 7: Fastest first goal of tournament
+        t1_first = t1.first_goal_time if t1.first_goal_time is not None else float('inf')
+        t2_first = t2.first_goal_time if t2.first_goal_time is not None else float('inf')
+        if t1_first != t2_first:
+            return -1 if t1_first < t2_first else 1
+
+        # Step 8: Coin toss
+        return random.choice([-1, 1])
+
+    return sorted(teams, key=cmp_to_key(compare_multi))
 
 
 def calculate_standings() -> List[dict]:
-    """Calculate standings from all games in the database."""
+    """Calculate standings from all games using full tiebreaker rules."""
     if not games_db:
         return []
 
     stats: Dict[str, TeamStats] = {}
+    game_counter = 0
 
-    for game in games_db.values():
+    # Sort games by game_number to process in order
+    sorted_games = sorted(games_db.values(), key=lambda g: g.game_number)
+
+    for game in sorted_games:
+        game_counter += 1
+
         # Initialize teams if not seen
         if game.team_a not in stats:
             stats[game.team_a] = TeamStats(name=game.team_a)
@@ -230,6 +404,26 @@ def calculate_standings() -> List[dict]:
         team_a.pim += game.pim_a
         team_b.pim += game.pim_b
 
+        # Track first goal of tournament for each team
+        if game.first_goal_team and game.first_goal_time_sec is not None:
+            # Calculate tournament time (game_number * large number + seconds)
+            tournament_time = game.game_number * 100000 + game.first_goal_time_sec
+
+            first_goal_team_name = ""
+            if game.first_goal_team.lower() == "a":
+                first_goal_team_name = game.team_a
+            elif game.first_goal_team.lower() == "b":
+                first_goal_team_name = game.team_b
+            else:
+                first_goal_team_name = game.first_goal_team
+
+            if first_goal_team_name == game.team_a:
+                if team_a.first_goal_time is None or tournament_time < team_a.first_goal_time:
+                    team_a.first_goal_time = tournament_time
+            elif first_goal_team_name == game.team_b:
+                if team_b.first_goal_time is None or tournament_time < team_b.first_goal_time:
+                    team_b.first_goal_time = tournament_time
+
         # Calculate points
         pts_a, w_a, l_a, t_a, otw_a, otl_a = points_for_game(game.goals_a, game.goals_b, game.ot)
         pts_b, w_b, l_b, t_b, otw_b, otl_b = points_for_game(game.goals_b, game.goals_a, game.ot)
@@ -248,12 +442,20 @@ def calculate_standings() -> List[dict]:
         team_b.otw += otw_b
         team_b.otl += otl_b
 
-    # Sort by: points (desc), wins (desc), goal_average (desc), goals_against (asc)
-    sorted_teams = sorted(
-        stats.values(),
-        key=lambda t: (t.pts, t.w, t.goal_average(), -t.ga),
-        reverse=True
-    )
+    # Group teams by points
+    teams_list = list(stats.values())
+    points_groups: Dict[int, List[TeamStats]] = {}
+    for team in teams_list:
+        if team.pts not in points_groups:
+            points_groups[team.pts] = []
+        points_groups[team.pts].append(team)
+
+    # Sort each group using full tiebreaker rules
+    sorted_teams = []
+    for pts in sorted(points_groups.keys(), reverse=True):
+        group = points_groups[pts]
+        sorted_group = sort_tied_group(group, games_db)
+        sorted_teams.extend(sorted_group)
 
     # Build standings with rank
     standings = []
@@ -275,6 +477,57 @@ def calculate_standings() -> List[dict]:
         })
 
     return standings
+
+
+def scrape_icejam() -> Dict:
+    """Scrape standings data from icejam.ca/standings/"""
+    try:
+        logger.info(f"Fetching {STANDINGS_URL}")
+        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        standings_data = []
+
+        tables = soup.find_all("table")
+        logger.info(f"Found {len(tables)} tables")
+
+        for table in tables:
+            rows = table.find_all("tr")
+            for row in rows[1:]:
+                cells = row.find_all(["td", "th"])
+                if len(cells) >= 8:
+                    team_name = cells[0].get_text(strip=True)
+                    if team_name.upper() == "TEAM":
+                        continue
+                    try:
+                        standings_data.append({
+                            "team": team_name,
+                            "gp": int(cells[2].get_text(strip=True) or 0),
+                            "w": int(cells[3].get_text(strip=True) or 0),
+                            "l": int(cells[4].get_text(strip=True) or 0),
+                            "otl": int(cells[5].get_text(strip=True) or 0),
+                            "pts": int(cells[6].get_text(strip=True) or 0),
+                            "gf": int(cells[7].get_text(strip=True) or 0),
+                            "ga": int(cells[8].get_text(strip=True) or 0),
+                        })
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Could not parse row: {e}")
+
+        return {
+            "ok": True,
+            "url": STANDINGS_URL,
+            "teams_found": len(standings_data),
+            "standings": standings_data
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Scrape error: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "url": STANDINGS_URL
+        }
 
 
 # ============ PAGE ROUTES ============
@@ -307,7 +560,6 @@ def get_teams():
 def standings(team: str = Query(DEFAULT_TEAM)):
     all_standings = calculate_standings()
 
-    # Find tracked team rank
     tracked_rank = None
     for s in all_standings:
         if team.lower() in s["team"].lower():
@@ -326,6 +578,18 @@ def standings(team: str = Query(DEFAULT_TEAM)):
 def add_game(game: GameInput):
     """Add a new game result."""
     game_id = str(uuid.uuid4())[:8]
+    game_number = len(games_db) + 1
+
+    # Determine first goal team
+    first_goal_team = ""
+    if game.first_goal_team:
+        if game.first_goal_team.lower() in ["a", "home"]:
+            first_goal_team = "a"
+        elif game.first_goal_team.lower() in ["b", "away"]:
+            first_goal_team = "b"
+        else:
+            first_goal_team = game.first_goal_team
+
     new_game = Game(
         game_id=game_id,
         team_a=norm(game.team_a),
@@ -334,7 +598,10 @@ def add_game(game: GameInput):
         goals_b=game.goals_b,
         ot=game.ot,
         pim_a=game.pim_a,
-        pim_b=game.pim_b
+        pim_b=game.pim_b,
+        first_goal_team=first_goal_team,
+        first_goal_time_sec=game.first_goal_time_sec,
+        game_number=game_number
     )
     games_db[game_id] = new_game
     return {"ok": True, "game_id": game_id, "game": asdict(new_game)}
@@ -368,8 +635,5 @@ def clear_games():
 
 @app.get("/api/scrape")
 def scrape():
-    """
-    Scrape standings from icejam.ca/standings/
-    Returns the current official standings from the tournament website.
-    """
+    """Scrape standings from icejam.ca/standings/"""
     return scrape_icejam()

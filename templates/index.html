@@ -107,6 +107,33 @@ th { color:#9fb0cf; font-weight:500; }
         <input type="checkbox" id="ot">
         <label for="ot">Overtime / Shootout</label>
       </div>
+
+      <div class="card-title" style="margin-top:16px;font-size:12px;">Tiebreaker Data (Optional)</div>
+      <div class="row">
+        <div>
+          <label class="small">Home PIM</label>
+          <input id="pim_a" type="number" min="0" placeholder="0" value="">
+        </div>
+        <div>
+          <label class="small">Away PIM</label>
+          <input id="pim_b" type="number" min="0" placeholder="0" value="">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label class="small">First Goal By</label>
+          <select id="first_goal_team">
+            <option value="">-- Not tracked --</option>
+            <option value="a">Home Team</option>
+            <option value="b">Away Team</option>
+          </select>
+        </div>
+        <div>
+          <label class="small">Time (seconds)</label>
+          <input id="first_goal_time" type="number" min="0" placeholder="e.g. 120" value="">
+        </div>
+      </div>
+
       <button onclick="addGame()">Add Game</button>
       <div id="game-msg"></div>
     </div>
@@ -215,6 +242,10 @@ async function addGame() {
   const goals_a = parseInt(document.getElementById("score_a").value) || 0;
   const goals_b = parseInt(document.getElementById("score_b").value) || 0;
   const ot = document.getElementById("ot").checked;
+  const pim_a = parseInt(document.getElementById("pim_a").value) || 0;
+  const pim_b = parseInt(document.getElementById("pim_b").value) || 0;
+  const first_goal_team = document.getElementById("first_goal_team").value;
+  const first_goal_time_sec = document.getElementById("first_goal_time").value ? parseInt(document.getElementById("first_goal_time").value) : null;
 
   if (!team_a || !team_b) {
     msg.innerHTML = '<div class="msg error">Select both teams</div>';
@@ -229,7 +260,7 @@ async function addGame() {
   const r = await fetch('/api/games', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ team_a, team_b, goals_a, goals_b, ot })
+    body: JSON.stringify({ team_a, team_b, goals_a, goals_b, ot, pim_a, pim_b, first_goal_team, first_goal_time_sec })
   });
   const d = await r.json();
 
@@ -238,6 +269,10 @@ async function addGame() {
     document.getElementById("score_a").value = "";
     document.getElementById("score_b").value = "";
     document.getElementById("ot").checked = false;
+    document.getElementById("pim_a").value = "";
+    document.getElementById("pim_b").value = "";
+    document.getElementById("first_goal_team").value = "";
+    document.getElementById("first_goal_time").value = "";
     update();
   } else {
     msg.innerHTML = '<div class="msg error">Error adding game</div>';
@@ -254,12 +289,16 @@ async function listGames() {
     return;
   }
 
-  let html = '<table style="margin-top:10px"><tr><th>Game</th><th>Score</th><th></th></tr>';
+  let html = '<table style="margin-top:10px"><tr><th>Game</th><th>Score</th><th>Extra</th><th></th></tr>';
   d.games.forEach(g => {
     const otTag = g.ot ? ' (OT)' : '';
+    const pimInfo = (g.pim_a || g.pim_b) ? `PIM:${g.pim_a}/${g.pim_b}` : '';
+    const fgInfo = g.first_goal_team ? `1st:${g.first_goal_team.toUpperCase()}` : '';
+    const extra = [pimInfo, fgInfo].filter(x => x).join(' ') || '-';
     html += `<tr>
       <td class="small">${g.team_a} vs ${g.team_b}</td>
       <td>${g.goals_a}-${g.goals_b}${otTag}</td>
+      <td class="small">${extra}</td>
       <td><span style="color:#dc3545;cursor:pointer" onclick="deleteGame('${g.game_id}')">X</span></td>
     </tr>`;
   });

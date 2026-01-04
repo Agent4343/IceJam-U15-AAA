@@ -738,3 +738,19 @@ def scrape():
 def schedule(team: str = Query(DEFAULT_TEAM)):
     """Scrape schedule from icejam.ca/schedule/"""
     return scrape_schedule(team)
+
+
+@app.get("/api/debug-schedule")
+def debug_schedule():
+    """Debug: show raw HTML from icejam.ca/schedule/"""
+    try:
+        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        # Return first 5000 chars of HTML for debugging
+        return {
+            "ok": True,
+            "html_preview": response.text[:5000],
+            "total_length": len(response.text)
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

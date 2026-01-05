@@ -908,6 +908,30 @@ def debug_standings():
             if text and len(text) > 50:
                 script_content.append(text)
 
+        # Show HTML tables found
+        tables_info = []
+        for i, table in enumerate(soup.find_all("table")[:5]):
+            rows = table.find_all("tr")
+            table_data = {
+                "index": i,
+                "row_count": len(rows),
+                "first_row": None,
+                "sample_rows": []
+            }
+            if rows:
+                # Get header or first row
+                first_cells = rows[0].find_all(["th", "td"])
+                table_data["first_row"] = [c.get_text(strip=True)[:30] for c in first_cells[:10]]
+                # Get sample data rows
+                for row in rows[1:4]:
+                    cells = row.find_all(["td", "th"])
+                    table_data["sample_rows"].append([c.get_text(strip=True)[:30] for c in cells[:10]])
+            tables_info.append(table_data)
+
+        # Check for iframes (data might be in iframe)
+        iframes = soup.find_all("iframe")
+        iframe_srcs = [iframe.get("src", "")[:100] for iframe in iframes[:5]]
+
         return {
             "ok": True,
             "total_length": len(html),
@@ -916,7 +940,10 @@ def debug_standings():
             "other_json_vars": len(all_json_vars),
             "json_patterns": json_patterns,
             "hitmen_context": hitmen_context,
-            "script_samples": script_content[:3]
+            "script_samples": script_content[:3],
+            "tables_found": len(soup.find_all("table")),
+            "tables_info": tables_info,
+            "iframes": iframe_srcs
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

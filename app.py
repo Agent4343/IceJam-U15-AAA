@@ -23,28 +23,11 @@ BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
-DEFAULT_LEAGUE = "500225"  # IceJam U18 league ID (contains the correct tournament teams)
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 
-# All 18 teams from IceJam U15 AAA 2026
+# IceJam U15 AAA teams (will be populated from live standings)
 TEAMS = [
-    "Moncton Flyers",
-    "Cape Breton West Islanders",
-    "March and Mill Co Hunters",
-    "Halifax McDonalds",
-    "Steele Subaru",
-    "Fredericton Caps",
-    "East Coast Blizzard",
-    "Northern Moose",
-    "Weeks`s Majors",
-    "Commandeurs Collège de Lévis",
-    "Valley Wildcats",
-    "South Shore Mustangs",
-    "Charlottetown Knights",
-    "Saint John Vito`s",
-    "Nissan Growlers",
-    "Kensington Wild",
-    "Sydney Rush",
-    "Central Impact",
+    "Eastern Hitmen",
 ]
 
 # Browser headers to avoid being blocked (no Accept-Encoding to get plain text)

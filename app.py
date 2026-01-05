@@ -486,33 +486,75 @@ def scrape_icejam() -> Dict:
         response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        html = response.text
         standings_data = []
 
-        tables = soup.find_all("table")
-        logger.info(f"Found {len(tables)} tables")
+        import json as json_lib
 
-        for table in tables:
-            rows = table.find_all("tr")
-            for row in rows[1:]:
-                cells = row.find_all(["td", "th"])
-                if len(cells) >= 8:
-                    team_name = cells[0].get_text(strip=True)
-                    if team_name.upper() == "TEAM":
-                        continue
-                    try:
+        # Try to extract the json = [...] JavaScript variable (like schedule)
+        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+
+        if json_match:
+            try:
+                teams_json = json_lib.loads(json_match.group(1))
+                logger.info(f"Found {len(teams_json)} entries in standings JSON")
+
+                for team in teams_json:
+                    # RYNA Hockey standings fields:
+                    # t_n = team name, gp = games played, w = wins, l = losses
+                    # otl = OT losses, pts = points, gf = goals for, ga = goals against
+                    team_name = team.get("t_n") or team.get("team") or team.get("name") or ""
+
+                    if team_name:
                         standings_data.append({
                             "team": team_name,
-                            "gp": int(cells[2].get_text(strip=True) or 0),
-                            "w": int(cells[3].get_text(strip=True) or 0),
-                            "l": int(cells[4].get_text(strip=True) or 0),
-                            "otl": int(cells[5].get_text(strip=True) or 0),
-                            "pts": int(cells[6].get_text(strip=True) or 0),
-                            "gf": int(cells[7].get_text(strip=True) or 0),
-                            "ga": int(cells[8].get_text(strip=True) or 0),
+                            "gp": int(team.get("gp", 0) or 0),
+                            "w": int(team.get("w", 0) or 0),
+                            "l": int(team.get("l", 0) or 0),
+                            "t": int(team.get("t", 0) or 0),
+                            "otl": int(team.get("otl", 0) or 0),
+                            "pts": int(team.get("pts", 0) or 0),
+                            "gf": int(team.get("gf", 0) or 0),
+                            "ga": int(team.get("ga", 0) or 0),
                         })
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Could not parse row: {e}")
+
+            except json_lib.JSONDecodeError as e:
+                logger.error(f"JSON parse error: {e}")
+
+        # If no JSON found, try other variable names
+        if not standings_data:
+            for var_name in ['standings', 'teams', 'data', 'tbl']:
+                pattern = rf'{var_name}\s*=\s*(\[.*?\]);'
+                match = re.search(pattern, html, re.DOTALL | re.IGNORECASE)
+                if match:
+                    try:
+                        teams_json = json_lib.loads(match.group(1))
+                        logger.info(f"Found data in '{var_name}' variable")
+                        for team in teams_json:
+                            team_name = team.get("t_n") or team.get("team") or team.get("name") or ""
+                            if team_name:
+                                standings_data.append({
+                                    "team": team_name,
+                                    "gp": int(team.get("gp", 0) or 0),
+                                    "w": int(team.get("w", 0) or 0),
+                                    "l": int(team.get("l", 0) or 0),
+                                    "t": int(team.get("t", 0) or 0),
+                                    "otl": int(team.get("otl", 0) or 0),
+                                    "pts": int(team.get("pts", 0) or 0),
+                                    "gf": int(team.get("gf", 0) or 0),
+                                    "ga": int(team.get("ga", 0) or 0),
+                                })
+                        if standings_data:
+                            break
+                    except json_lib.JSONDecodeError:
+                        continue
+
+        # Sort by points (descending) then by goal differential
+        standings_data.sort(key=lambda x: (x["pts"], x["gf"] - x["ga"]), reverse=True)
+
+        # Add rank
+        for i, team in enumerate(standings_data, 1):
+            team["rank"] = i
 
         return {
             "ok": True,
@@ -759,29 +801,53 @@ def debug_standings():
         response.raise_for_status()
 
         html = response.text
-        # Look for JSON data patterns
         import json as json_lib
 
-        # Find jsonTeams or similar
+        # Try to find the main json variable first
+        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        main_json_info = None
+        if json_match:
+            try:
+                data = json_lib.loads(json_match.group(1))
+                main_json_info = {
+                    "found": True,
+                    "count": len(data),
+                    "keys": list(data[0].keys()) if data else [],
+                    "sample": data[0] if data else None,
+                    "all_samples": data[:3] if len(data) >= 3 else data  # First 3 entries
+                }
+            except Exception as e:
+                main_json_info = {"found": True, "error": str(e)}
+        else:
+            main_json_info = {"found": False}
+
+        # Find all JavaScript variable assignments that look like arrays
+        all_json_vars = re.findall(r'(\w+)\s*=\s*(\[\{.*?\}\]);', html, re.DOTALL)
+
         json_patterns = []
-        for pattern_name in ['jsonTeams', 'jsonStandings', 'json', 'standings']:
-            match = re.search(rf'{pattern_name}\s*=\s*(\[.*?\]);', html, re.DOTALL)
-            if match:
-                try:
-                    data = json_lib.loads(match.group(1))
-                    json_patterns.append({
-                        "name": pattern_name,
-                        "count": len(data),
-                        "sample": data[:2] if len(data) > 0 else []
-                    })
-                except:
-                    json_patterns.append({"name": pattern_name, "error": "parse failed"})
+        for var_name, json_str in all_json_vars[:10]:  # First 10
+            try:
+                data = json_lib.loads(json_str)
+                json_patterns.append({
+                    "name": var_name,
+                    "count": len(data),
+                    "keys": list(data[0].keys()) if data else [],
+                    "sample": data[0] if data else None
+                })
+            except:
+                json_patterns.append({"name": var_name, "error": "parse failed", "preview": json_str[:200]})
+
+        # Also look for Hitmen in the HTML
+        hitmen_idx = html.lower().find('hitmen')
+        hitmen_context = html[max(0,hitmen_idx-100):hitmen_idx+200] if hitmen_idx > 0 else "Not found"
 
         return {
             "ok": True,
             "total_length": len(html),
-            "json_patterns_found": json_patterns,
-            "preview": html[1000:3000]  # Middle section
+            "main_json": main_json_info,
+            "other_json_vars": len(all_json_vars),
+            "json_patterns": json_patterns,
+            "hitmen_context": hitmen_context
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

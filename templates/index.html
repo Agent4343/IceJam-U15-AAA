@@ -77,6 +77,12 @@ th { color:#9fb0cf; font-weight:500; }
       <button id="btn-overview" class="live" style="background:#28a745;" onclick="setView('overview')">Overview</button>
       <button id="btn-offence" class="live" onclick="setView('offence')">Offence</button>
     </div>
+    <div class="row" style="margin-top:5px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;padding:5px 10px;background:#f0f0f0;border-radius:5px;cursor:pointer;">
+        <input type="checkbox" id="apply-rules" checked onchange="toggleRules()">
+        <span id="rules-label">Apply Tournament Rules (Tiebreakers)</span>
+      </label>
+    </div>
     <div id="live-status"></div>
     <div id="live-result"></div>
   </div>
@@ -184,6 +190,23 @@ th { color:#9fb0cf; font-weight:500; }
 let liveStandings = [];
 let liveTiebreakers = []; // Tiebreaker calculation log
 let currentView = 'overview'; // 'overview' or 'offence'
+let applyRules = true; // Apply tournament tiebreaker rules
+
+function toggleRules() {
+  applyRules = document.getElementById('apply-rules').checked;
+  const label = document.getElementById('rules-label');
+  if (applyRules) {
+    label.innerHTML = 'Apply Tournament Rules (Tiebreakers) ✓';
+    label.style.color = '#28a745';
+  } else {
+    label.innerHTML = 'Tournament Rules OFF (using icejam.ca order)';
+    label.style.color = '#dc3545';
+  }
+  // Re-fetch if we have data
+  if (liveStandings.length > 0) {
+    fetchLive();
+  }
+}
 
 function setView(view) {
   currentView = view;
@@ -328,7 +351,7 @@ async function fetchLive() {
   result.innerHTML = '';
 
   try {
-    const r = await fetch('/api/scrape');
+    const r = await fetch(`/api/scrape?apply_rules=${applyRules}`);
     const d = await r.json();
 
     if (d.ok && d.standings && d.standings.length > 0) {

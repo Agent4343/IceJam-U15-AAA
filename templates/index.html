@@ -53,6 +53,15 @@ th { color:#9fb0cf; font-weight:500; }
     </div>
   </div>
 
+  <!-- Tournament Info -->
+  <div class="card" style="background:#1a2538;">
+    <div class="small" style="text-align:center;">
+      <b>Round Robin:</b> 26 teams play 3 games each (Wed-Fri)<br>
+      <b>Playoffs:</b> Top 16 advance | <span style="color:#f87171;">10 teams eliminated</span><br>
+      <b>Format:</b> Replacement Seeding (winner takes loser's seed if higher)
+    </div>
+  </div>
+
   <!-- Live Standings -->
   <div class="card">
     <div class="card-title">Live Standings <span class="live-badge">LIVE</span></div>
@@ -227,7 +236,16 @@ function highlightTracked() {
     const gd = teamData.gf - teamData.ga;
     const gdStr = gd >= 0 ? `+${gd}` : `${gd}`;
 
-    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts | GD: ${gdStr}`;
+    // Playoff status
+    let playoffStatus = '';
+    if (rank <= 16) {
+      playoffStatus = `<span style="color:#4ade80;">IN PLAYOFFS (#${rank} seed)</span>`;
+    } else {
+      const spotsBack = rank - 16;
+      playoffStatus = `<span style="color:#f87171;">ELIMINATED (${spotsBack} spot${spotsBack > 1 ? 's' : ''} out)</span>`;
+    }
+
+    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts | GD: ${gdStr}<br>${playoffStatus}`;
     infoDiv.style.display = 'block';
   } else {
     infoDiv.style.display = 'none';

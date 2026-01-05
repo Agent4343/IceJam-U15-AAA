@@ -480,11 +480,14 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
-def scrape_icejam() -> Dict:
+def scrape_icejam(league_id: str = None) -> Dict:
     """Scrape standings data from icejam.ca/standings/"""
     try:
-        logger.info(f"Fetching {STANDINGS_URL}")
-        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
+        # Use provided league_id or default to IceJam U15
+        lg = league_id or DEFAULT_LEAGUE
+        url = f"{STANDINGS_URL}?lg={lg}"
+        logger.info(f"Fetching {url}")
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
         html = response.text
@@ -641,7 +644,8 @@ def scrape_icejam() -> Dict:
 
         return {
             "ok": True,
-            "url": STANDINGS_URL,
+            "url": url,
+            "league_id": lg,
             "teams_found": len(standings_data),
             "standings": standings_data
         }
@@ -651,7 +655,7 @@ def scrape_icejam() -> Dict:
         return {
             "ok": False,
             "error": str(e),
-            "url": STANDINGS_URL
+            "url": url if 'url' in locals() else STANDINGS_URL
         }
 
 
@@ -834,9 +838,9 @@ def clear_games():
 
 
 @app.get("/api/scrape")
-def scrape():
+def scrape(league: str = Query(None, description="League ID (default: IceJam U15)")):
     """Scrape standings from icejam.ca/standings/"""
-    return scrape_icejam()
+    return scrape_icejam(league)
 
 
 @app.get("/api/playoff-bracket")

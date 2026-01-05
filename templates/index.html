@@ -108,7 +108,7 @@ th { color:#9fb0cf; font-weight:500; }
         <option value="{{ t }}" {% if t == default_team %}selected{% endif %}>{{ t }}</option>
         {% endfor %}
       </select>
-      <button onclick="update()">Update Standings</button>
+      <button onclick="update()">Refresh My Standings</button>
     </div>
 
     <!-- Add Game Panel -->
@@ -431,26 +431,41 @@ async function fetchSchedule() {
 }
 
 async function update() {
-  const team = document.getElementById("team").value;
-  const r = await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
-  const d = await r.json();
   const rows = document.getElementById("rows");
   const count = document.getElementById("games-count");
 
-  count.textContent = d.games_count ? `(${d.games_count} games)` : '';
-  rows.innerHTML = "";
+  // Show loading state
+  rows.innerHTML = "<tr><td colspan='7' class='small'>Loading...</td></tr>";
 
-  if (!d.standings.length) {
-    rows.innerHTML = "<tr><td colspan='7' class='small'>No games yet - add some!</td></tr>";
-    return;
+  try {
+    const team = document.getElementById("team").value;
+    const r = await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
+
+    if (!r.ok) {
+      throw new Error(`Server error: ${r.status} ${r.statusText}`);
+    }
+
+    const d = await r.json();
+
+    count.textContent = d.games_count ? `(${d.games_count} games)` : '';
+    rows.innerHTML = "";
+
+    if (!d.standings || !d.standings.length) {
+      rows.innerHTML = "<tr><td colspan='7' class='small'>No games yet - add some!</td></tr>";
+      return;
+    }
+
+    d.standings.forEach(x => {
+      const tr = document.createElement("tr");
+      if (x.team.toLowerCase().includes("hitmen")) tr.className = "hitmen";
+      tr.innerHTML = `<td>${x.rank}</td><td>${x.team}</td><td>${x.gp}</td><td>${x.w}</td><td>${x.l}</td><td>${x.t}</td><td><b>${x.pts}</b></td>`;
+      rows.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('Update standings error:', e);
+    rows.innerHTML = `<tr><td colspan='7' class='small' style='color:#f87171;'>Error: ${e.message}<br>Make sure the server is running (uvicorn app:app)</td></tr>`;
+    count.textContent = '';
   }
-
-  d.standings.forEach(x => {
-    const tr = document.createElement("tr");
-    if (x.team.toLowerCase().includes("hitmen")) tr.className = "hitmen";
-    tr.innerHTML = `<td>${x.rank}</td><td>${x.team}</td><td>${x.gp}</td><td>${x.w}</td><td>${x.l}</td><td>${x.t}</td><td><b>${x.pts}</b></td>`;
-    rows.appendChild(tr);
-  });
 }
 
 async function addGame() {

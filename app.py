@@ -23,7 +23,7 @@ BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Moncton Flyers"
-DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (found from jsonSLeague)
+DEFAULT_LEAGUE = "500225"  # IceJam U18 league ID (contains the correct tournament teams)
 
 # All 18 teams from IceJam U15 AAA 2026
 TEAMS = [

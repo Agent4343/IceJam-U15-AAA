@@ -34,7 +34,39 @@ li { margin:6px 0; font-size:14px; line-height:1.5; }
 <body>
 <div class="container">
   <h1>IceJam U15 AAA</h1>
-  <div class="small">2026 Tournament Rules</div>
+  <div class="small">2026 Tournament Rules & App Guide</div>
+
+  <div class="card">
+    <h2>How This App Works</h2>
+    <p style="font-size:14px;line-height:1.6;margin:0;">
+      This app tracks the <b>Eastern Hitmen</b> through the IceJam U15 AAA tournament.
+    </p>
+
+    <h3>Live Data</h3>
+    <ul>
+      <li><b>Fetch Standings</b> - Gets current standings from icejam.ca</li>
+      <li><b>Fetch Schedule</b> - Shows upcoming Hitmen games with dates, times, and rinks</li>
+    </ul>
+
+    <h3>What the App Calculates</h3>
+    <ul>
+      <li><b>Rankings</b> - Uses all 9 tiebreaker rules (below) to determine exact standings</li>
+      <li><b>Playoff Matchups</b> - Based on final round robin rank:
+        <ul style="margin-top:4px;">
+          <li>Rank 1 plays Rank 16</li>
+          <li>Rank 2 plays Rank 15</li>
+          <li>Rank 8 plays Rank 9</li>
+          <li>...and so on</li>
+        </ul>
+      </li>
+      <li><b>Goal Average</b> - Tournament formula: GF / (GF + GA)</li>
+    </ul>
+
+    <h3>Manual Game Entry</h3>
+    <p style="font-size:13px;color:#9fb0cf;margin:8px 0 0 0;">
+      Add game results manually to track "what-if" scenarios or when live data isn't available.
+    </p>
+  </div>
 
   <div class="card">
     <h2>Game Format</h2>
@@ -142,7 +174,24 @@ li { margin:6px 0; font-size:14px; line-height:1.5; }
   </div>
 
   <div class="card">
-    <h2>Playoff Seeding</h2>
+    <h2>Playoff Bracket</h2>
+    <p class="small">Top 16 teams qualify. First round matchups:</p>
+    <table>
+      <tr><th>Game</th><th>Matchup</th></tr>
+      <tr><td>P01</td><td><b>Rank 1</b> vs Rank 16</td></tr>
+      <tr><td>P02</td><td><b>Rank 2</b> vs Rank 15</td></tr>
+      <tr><td>P03</td><td><b>Rank 3</b> vs Rank 14</td></tr>
+      <tr><td>P04</td><td><b>Rank 4</b> vs Rank 13</td></tr>
+      <tr><td>P05</td><td><b>Rank 5</b> vs Rank 12</td></tr>
+      <tr><td>P06</td><td><b>Rank 6</b> vs Rank 11</td></tr>
+      <tr><td>P07</td><td><b>Rank 7</b> vs Rank 10</td></tr>
+      <tr><td>P08</td><td><b>Rank 8</b> vs Rank 9</td></tr>
+    </table>
+    <p class="small" style="margin-top:12px;">Higher seed is home team. Winners advance to quarterfinals.</p>
+  </div>
+
+  <div class="card">
+    <h2>Playoff Rules</h2>
     <ul>
       <li><b>Replacement Seeding:</b> If a lower seed beats a higher seed, they take that seed position for the rest of the tournament</li>
       <li><b>AP Players:</b> Players on higher teams can't play for their main team until the lower team is eliminated</li>

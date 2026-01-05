@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BASE = "https://icejam.ca"
-STANDINGS_URL = f"{BASE}/standings/2024-25/"
+STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
 

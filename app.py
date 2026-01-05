@@ -803,8 +803,21 @@ def debug_standings():
         html = response.text
         import json as json_lib
 
-        # Try to find the main json variable first
+        # Try multiple regex patterns to find JSON data
+        patterns_tried = []
+
+        # Pattern 1: json = [...]
         json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        patterns_tried.append({"pattern": "json = [...];", "found": bool(json_match)})
+
+        # Pattern 2: json = [...] with greedy match up to ]];
+        json_match2 = re.search(r'json\s*=\s*(\[[\s\S]*?\]\s*);', html)
+        patterns_tried.append({"pattern": "json = [...] greedy", "found": bool(json_match2)})
+
+        # Pattern 3: Look for any large array assignment
+        array_matches = re.findall(r'(\w+)\s*=\s*\[', html)
+        patterns_tried.append({"pattern": "var = [", "variables_found": array_matches[:20]})
+
         main_json_info = None
         if json_match:
             try:
@@ -814,18 +827,17 @@ def debug_standings():
                     "count": len(data),
                     "keys": list(data[0].keys()) if data else [],
                     "sample": data[0] if data else None,
-                    "all_samples": data[:3] if len(data) >= 3 else data  # First 3 entries
                 }
             except Exception as e:
-                main_json_info = {"found": True, "error": str(e)}
+                main_json_info = {"found": True, "error": str(e), "raw_preview": json_match.group(1)[:500]}
         else:
             main_json_info = {"found": False}
 
-        # Find all JavaScript variable assignments that look like arrays
-        all_json_vars = re.findall(r'(\w+)\s*=\s*(\[\{.*?\}\]);', html, re.DOTALL)
+        # Find all JavaScript variable assignments that look like arrays of objects
+        all_json_vars = re.findall(r'(\w+)\s*=\s*(\[\{.*?\}\])\s*;', html, re.DOTALL)
 
         json_patterns = []
-        for var_name, json_str in all_json_vars[:10]:  # First 10
+        for var_name, json_str in all_json_vars[:10]:
             try:
                 data = json_lib.loads(json_str)
                 json_patterns.append({
@@ -835,19 +847,29 @@ def debug_standings():
                     "sample": data[0] if data else None
                 })
             except:
-                json_patterns.append({"name": var_name, "error": "parse failed", "preview": json_str[:200]})
+                json_patterns.append({"name": var_name, "error": "parse failed", "preview": json_str[:300]})
 
-        # Also look for Hitmen in the HTML
+        # Look for Hitmen in the HTML
         hitmen_idx = html.lower().find('hitmen')
-        hitmen_context = html[max(0,hitmen_idx-100):hitmen_idx+200] if hitmen_idx > 0 else "Not found"
+        hitmen_context = html[max(0,hitmen_idx-200):hitmen_idx+300] if hitmen_idx > 0 else "Not found"
+
+        # Show a sample of the script tags
+        script_content = []
+        soup = BeautifulSoup(html, "html.parser")
+        for script in soup.find_all("script")[:5]:
+            text = script.get_text()[:500] if script.get_text() else ""
+            if text and len(text) > 50:
+                script_content.append(text)
 
         return {
             "ok": True,
             "total_length": len(html),
+            "patterns_tried": patterns_tried,
             "main_json": main_json_info,
             "other_json_vars": len(all_json_vars),
             "json_patterns": json_patterns,
-            "hitmen_context": hitmen_context
+            "hitmen_context": hitmen_context,
+            "script_samples": script_content[:3]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

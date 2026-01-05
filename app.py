@@ -491,35 +491,70 @@ def scrape_icejam() -> Dict:
 
         import json as json_lib
 
-        # Try to extract the json = [...] JavaScript variable (like schedule)
-        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Try to extract jsonSt variable (RYNA Hockey format)
+        # Structure: jsonSt = [{"jsonStandings": [{team1}, {team2}, ...]}]
+        jsonst_start = html.find('let jsonSt = [')
+        if jsonst_start > 0:
+            # Find the end of the JSON array by counting brackets
+            start_idx = jsonst_start + len('let jsonSt = ')
+            bracket_count = 0
+            end_idx = start_idx
+            in_string = False
+            escape_next = False
 
-        if json_match:
-            try:
-                teams_json = json_lib.loads(json_match.group(1))
-                logger.info(f"Found {len(teams_json)} entries in standings JSON")
+            for i, char in enumerate(html[start_idx:], start_idx):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if char == '[':
+                    bracket_count += 1
+                elif char == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        end_idx = i + 1
+                        break
 
-                for team in teams_json:
-                    # RYNA Hockey standings fields:
-                    # t_n = team name, gp = games played, w = wins, l = losses
-                    # otl = OT losses, pts = points, gf = goals for, ga = goals against
-                    team_name = team.get("t_n") or team.get("team") or team.get("name") or ""
+            if end_idx > start_idx:
+                json_str = html[start_idx:end_idx]
+                try:
+                    jsonst_data = json_lib.loads(json_str)
+                    logger.info(f"Found jsonSt with {len(jsonst_data)} entries")
 
-                    if team_name:
-                        standings_data.append({
-                            "team": team_name,
-                            "gp": int(team.get("gp", 0) or 0),
-                            "w": int(team.get("w", 0) or 0),
-                            "l": int(team.get("l", 0) or 0),
-                            "t": int(team.get("t", 0) or 0),
-                            "otl": int(team.get("otl", 0) or 0),
-                            "pts": int(team.get("pts", 0) or 0),
-                            "gf": int(team.get("gf", 0) or 0),
-                            "ga": int(team.get("ga", 0) or 0),
-                        })
+                    # Extract standings from jsonStandings array inside first element
+                    if jsonst_data and isinstance(jsonst_data, list) and len(jsonst_data) > 0:
+                        standings_array = jsonst_data[0].get("jsonStandings", [])
+                        logger.info(f"Found {len(standings_array)} teams in jsonStandings")
 
-            except json_lib.JSONDecodeError as e:
-                logger.error(f"JSON parse error: {e}")
+                        for team in standings_array:
+                            # RYNA Hockey fields:
+                            # ln = long name, mn = medium name, sn = short name
+                            # gp, w, l, t, otl, otw, gf, ga, pts, pim
+                            team_name = team.get("ln") or team.get("mn") or team.get("sn") or ""
+
+                            if team_name:
+                                standings_data.append({
+                                    "team": team_name,
+                                    "gp": int(team.get("gp", 0) or 0),
+                                    "w": int(team.get("w", 0) or 0),
+                                    "l": int(team.get("l", 0) or 0),
+                                    "t": int(team.get("t", 0) or 0),
+                                    "otl": int(team.get("otl", 0) or 0),
+                                    "pts": int(team.get("pts", 0) or 0),
+                                    "gf": int(team.get("gf", 0) or 0),
+                                    "ga": int(team.get("ga", 0) or 0),
+                                    "pim": int(team.get("pim", 0) or 0),
+                                })
+
+                except json_lib.JSONDecodeError as e:
+                    logger.error(f"JSON parse error: {e}")
 
         # If no JSON found, try other variable names
         if not standings_data:

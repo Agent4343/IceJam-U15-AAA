@@ -594,16 +594,19 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
         return {"ok": False, "error": str(e), "games": []}
 
 
-def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> List[Dict]:
+def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     """
     Apply tournament tiebreaker rules to live standings data.
     Uses the 9-step tiebreaker formula from the rules.
+    Returns (sorted_standings, tiebreaker_log) with details of calculations.
     """
     if not standings or not games:
-        return standings
+        return standings, []
+
+    tiebreaker_log = []  # Log of tiebreaker decisions
 
     # Build head-to-head record
-    h2h = {}  # {(team1, team2): {"team1_pts": 0, "team2_pts": 0, "first_goal": ""}}
+    h2h = {}  # {(team1, team2): {team1: pts, team2: pts}}
 
     for game in games:
         home = game["home"]
@@ -629,12 +632,13 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> List[
         h2h[key][home] = h2h[key].get(home, 0) + home_pts
         h2h[key][away] = h2h[key].get(away, 0) + away_pts
 
-    def compare_teams(t1: Dict, t2: Dict) -> int:
-        """Compare two teams using tiebreaker rules. Returns -1 if t1 > t2, 1 if t2 > t1, 0 if tie."""
+    def compare_teams_with_log(t1: Dict, t2: Dict) -> Tuple[int, str]:
+        """Compare two teams and return (result, reason)."""
 
         # Primary: Points
         if t1["pts"] != t2["pts"]:
-            return -1 if t1["pts"] > t2["pts"] else 1
+            reason = f"Points: {t1['team']} ({t1['pts']}) vs {t2['team']} ({t2['pts']})"
+            return (-1 if t1["pts"] > t2["pts"] else 1, reason)
 
         # Tiebreaker 1: Head-to-head record
         key = tuple(sorted([t1["team"], t2["team"]]))
@@ -642,43 +646,61 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> List[
             t1_h2h = h2h[key].get(t1["team"], 0)
             t2_h2h = h2h[key].get(t2["team"], 0)
             if t1_h2h != t2_h2h:
-                return -1 if t1_h2h > t2_h2h else 1
+                reason = f"TB1 H2H: {t1['team']} ({t1_h2h} pts) vs {t2['team']} ({t2_h2h} pts)"
+                return (-1 if t1_h2h > t2_h2h else 1, reason)
 
         # Tiebreaker 2: Most wins
         if t1["w"] != t2["w"]:
-            return -1 if t1["w"] > t2["w"] else 1
+            reason = f"TB2 Wins: {t1['team']} ({t1['w']}W) vs {t2['team']} ({t2['w']}W)"
+            return (-1 if t1["w"] > t2["w"] else 1, reason)
 
         # Tiebreaker 3: Goal average (GF / (GF + GA))
         t1_ga = t1["gf"] / (t1["gf"] + t1["ga"]) if (t1["gf"] + t1["ga"]) > 0 else 0
         t2_ga = t2["gf"] / (t2["gf"] + t2["ga"]) if (t2["gf"] + t2["ga"]) > 0 else 0
         if abs(t1_ga - t2_ga) > 0.0001:
-            return -1 if t1_ga > t2_ga else 1
+            reason = f"TB3 Goal Avg: {t1['team']} ({t1['gf']}/({t1['gf']}+{t1['ga']})={t1_ga:.3f}) vs {t2['team']} ({t2['gf']}/({t2['gf']}+{t2['ga']})={t2_ga:.3f})"
+            return (-1 if t1_ga > t2_ga else 1, reason)
 
         # Tiebreaker 4: Fewest goals against
         if t1["ga"] != t2["ga"]:
-            return -1 if t1["ga"] < t2["ga"] else 1
+            reason = f"TB4 Fewest GA: {t1['team']} ({t1['ga']} GA) vs {t2['team']} ({t2['ga']} GA)"
+            return (-1 if t1["ga"] < t2["ga"] else 1, reason)
 
         # Tiebreaker 5: Most goals for
         if t1["gf"] != t2["gf"]:
-            return -1 if t1["gf"] > t2["gf"] else 1
+            reason = f"TB5 Most GF: {t1['team']} ({t1['gf']} GF) vs {t2['team']} ({t2['gf']} GF)"
+            return (-1 if t1["gf"] > t2["gf"] else 1, reason)
 
         # Tiebreaker 6: Fewest penalty minutes
-        if t1.get("pim", 0) != t2.get("pim", 0):
-            return -1 if t1.get("pim", 0) < t2.get("pim", 0) else 1
+        t1_pim = t1.get("pim", 0)
+        t2_pim = t2.get("pim", 0)
+        if t1_pim != t2_pim:
+            reason = f"TB6 Fewest PIM: {t1['team']} ({t1_pim} PIM) vs {t2['team']} ({t2_pim} PIM)"
+            return (-1 if t1_pim < t2_pim else 1, reason)
 
-        # Tiebreakers 7-9 require data we don't have from the API
-        # (first goal in h2h, fastest first goal, coin toss)
-        return 0
+        # Still tied after all tiebreakers
+        reason = f"TIED: {t1['team']} vs {t2['team']} (need TB7-9: first goal h2h, fastest goal, coin toss)"
+        return (0, reason)
+
+    def compare_teams(t1: Dict, t2: Dict) -> int:
+        result, reason = compare_teams_with_log(t1, t2)
+        # Log tiebreaker decisions (only when not decided by points)
+        if "TB" in reason or "TIED" in reason:
+            tiebreaker_log.append(reason)
+        return result
 
     # Sort standings using tiebreaker rules
     from functools import cmp_to_key
     sorted_standings = sorted(standings, key=cmp_to_key(compare_teams))
 
-    # Update ranks
+    # Update ranks and add tiebreaker info to each team
     for i, team in enumerate(sorted_standings, 1):
         team["rank"] = i
+        # Calculate goal average for display
+        total_goals = team["gf"] + team["ga"]
+        team["goal_avg"] = round(team["gf"] / total_goals, 3) if total_goals > 0 else 0
 
-    return sorted_standings
+    return sorted_standings, tiebreaker_log
 
 
 def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") -> Dict:
@@ -693,15 +715,18 @@ def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") 
 
     if scores_result.get("ok") and scores_result.get("games"):
         # Apply tiebreaker rules
-        standings_result["standings"] = apply_tiebreakers_to_live(
+        sorted_standings, tiebreaker_log = apply_tiebreakers_to_live(
             standings_result["standings"],
             scores_result["games"]
         )
+        standings_result["standings"] = sorted_standings
         standings_result["tiebreakers_applied"] = True
         standings_result["games_used"] = scores_result["games_found"]
+        standings_result["tiebreaker_log"] = tiebreaker_log
     else:
         standings_result["tiebreakers_applied"] = False
         standings_result["tiebreaker_note"] = "Could not fetch game scores for h2h tiebreakers"
+        standings_result["tiebreaker_log"] = []
 
     return standings_result
 

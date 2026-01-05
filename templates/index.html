@@ -182,6 +182,7 @@ th { color:#9fb0cf; font-weight:500; }
 <script>
 // Store fetched standings for team selection
 let liveStandings = [];
+let liveTiebreakers = []; // Tiebreaker calculation log
 let currentView = 'overview'; // 'overview' or 'offence'
 
 function setView(view) {
@@ -332,6 +333,7 @@ async function fetchLive() {
 
     if (d.ok && d.standings && d.standings.length > 0) {
       liveStandings = d.standings;
+      liveTiebreakers = d.tiebreaker_log || [];
       const seasonInfo = d.season ? ` (${d.season}/${parseInt(d.season)+1})` : '';
       const rulesInfo = d.tiebreakers_applied ? ' ✓ Rules Applied' : '';
       const gamesInfo = d.games_used ? ` (${d.games_used} games)` : '';
@@ -342,6 +344,17 @@ async function fetchLive() {
 
       // Render table based on current view
       renderStandingsTable();
+
+      // Show tiebreaker work if any
+      if (liveTiebreakers.length > 0) {
+        let tbHtml = '<div style="margin-top:10px;"><details><summary style="cursor:pointer;color:#007bff;font-size:14px;">Show Tiebreaker Calculations (' + liveTiebreakers.length + ')</summary>';
+        tbHtml += '<div style="background:#f8f9fa;padding:10px;margin-top:5px;border-radius:5px;font-size:12px;">';
+        liveTiebreakers.forEach((tb, i) => {
+          tbHtml += `<div style="margin:3px 0;padding:3px;${tb.includes('TB1') ? 'color:#28a745;' : ''}${tb.includes('TIED') ? 'color:#dc3545;' : ''}">${i+1}. ${tb}</div>`;
+        });
+        tbHtml += '</div></details></div>';
+        result.innerHTML += tbHtml;
+      }
     } else if (d.ok) {
       status.innerHTML = `<div class="msg info">Connected to ${d.url}<br>Tables found: ${d.tables_found || 0}</div>`;
       if (d.standings && d.standings.length === 0) {

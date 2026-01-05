@@ -484,6 +484,7 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
                     # RYNA Hockey fields:
                     # ln = long name, mn = medium name, sn = short name
                     # gp, w, l, t, otl, otw, gf, ga, pts, pim
+                    # pp_per, pk_per, ppg_f, shg_f, shots_f, shots_a (Offence stats)
                     team_name = team.get("ln") or team.get("mn") or team.get("sn") or ""
 
                     if team_name:
@@ -498,6 +499,13 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
                             "gf": int(team.get("gf", 0) or 0),
                             "ga": int(team.get("ga", 0) or 0),
                             "pim": int(team.get("pim", 0) or 0),
+                            # Offence stats (changeRep(2))
+                            "pp_per": round(float(team.get("pp_per", 0) or 0), 3),
+                            "pk_per": round(float(team.get("pk_per", 0) or 0), 3),
+                            "ppg": int(team.get("ppg_f", 0) or 0),
+                            "shg": int(team.get("shg_f", 0) or 0),
+                            "shots_for": int(team.get("shots_f", 0) or 0),
+                            "shots_against": int(team.get("shots_a", 0) or 0),
                         })
         except json_lib.JSONDecodeError as e:
             logger.error(f"JSON parse error: {e}")

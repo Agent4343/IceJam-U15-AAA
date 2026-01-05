@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
-pandas
+jinja2
+requests
 beautifulsoup4
 lxml
-requests
-jinja2

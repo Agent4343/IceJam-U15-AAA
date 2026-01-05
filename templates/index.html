@@ -10,56 +10,294 @@ body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; back
 .container { max-width:720px; margin:auto; padding:16px; }
 h1 { margin:0; font-size:22px; }
 .card { background:#121a2a; border-radius:14px; padding:16px; margin-top:12px; }
-button,input { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; }
-button { background:#4da3ff; font-weight:700; margin-top:10px; }
+.card-title { font-size:14px; font-weight:600; margin-bottom:12px; color:#4da3ff; }
+button,select { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; box-sizing:border-box; }
+select { background:#1a2538; color:#fff; margin-bottom:8px; -webkit-appearance:none; cursor:pointer; }
+select option { background:#1a2538; color:#fff; }
+button { background:#1e8e3e; font-weight:700; margin-top:10px; cursor:pointer; color:#fff; }
+button:active { background:#167a2e; }
+.row { display:flex; gap:8px; }
+.row > * { flex:1; }
 table { width:100%; border-collapse:collapse; margin-top:10px; }
-th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; }
+th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; text-align:left; }
+th { color:#9fb0cf; font-weight:500; }
 .hitmen { background:#1e8e3e33; font-weight:700; }
 .small { color:#9fb0cf; font-size:12px; }
+.msg { padding:12px; border-radius:8px; margin-top:10px; font-size:14px; }
+.msg.success { background:#1e8e3e33; color:#4ade80; }
+.msg.error { background:#dc354533; color:#f87171; }
+.msg.info { background:#4da3ff22; color:#4da3ff; }
+.header { display:flex; justify-content:space-between; align-items:center; }
+.header-links { display:flex; gap:8px; }
+.header-links a { background:#2a3350; color:#fff; padding:8px 14px; border-radius:8px; text-decoration:none; font-size:13px; font-weight:600; }
+.live-badge { display:inline-block; background:#1e8e3e; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px; }
+#live-result { margin-top:12px; }
+#live-result table { font-size:13px; }
+.toggle-row { display:flex; gap:8px; margin-top:8px; }
+.toggle-btn { flex:1; padding:10px; text-align:center; background:#1a2538; border-radius:8px; cursor:pointer; font-size:14px; border:none; color:#fff; }
+.toggle-btn.active { background:#28a745; }
+.rules-toggle { display:flex; align-items:center; gap:8px; font-size:14px; padding:8px 12px; background:#1a2538; border-radius:8px; margin-top:8px; }
+.rules-toggle input { width:auto; }
 </style>
 </head>
 
 <body>
 <div class="container">
-  <h1>IceJam U15 AAA</h1>
-  <div class="small">Mobile standings tracker</div>
-
-  <div class="card">
-    <input id="team" value="{{ default_team }}">
-    <button onclick="update()">Update Standings</button>
+  <div class="header">
+    <div>
+      <h1>IceJam U15 AAA</h1>
+      <div class="small">Eastern Hitmen Standings Tracker</div>
+    </div>
+    <div class="header-links">
+      <a href="/rules">Rules</a>
+    </div>
   </div>
 
+  <!-- Live Standings -->
   <div class="card">
-    <div class="small">Standings</div>
-    <table>
-      <thead>
-        <tr><th>Rank</th><th>Team</th></tr>
-      </thead>
-      <tbody id="rows">
-        <tr><td colspan="2" class="small">Tap Update</td></tr>
-      </tbody>
-    </table>
+    <div class="card-title">Live Standings <span class="live-badge">LIVE</span></div>
+
+    <select id="track-team" onchange="highlightTracked()">
+      <option value="">-- Select Team to Track --</option>
+    </select>
+
+    <div id="tracked-info" class="msg info" style="display:none;"></div>
+
+    <button onclick="fetchLive()">Refresh Standings</button>
+
+    <div class="toggle-row">
+      <button id="btn-overview" class="toggle-btn active" onclick="setView('overview')">Overview</button>
+      <button id="btn-offence" class="toggle-btn" onclick="setView('offence')">Offence</button>
+    </div>
+
+    <label class="rules-toggle">
+      <input type="checkbox" id="apply-rules" checked onchange="toggleRules()">
+      <span id="rules-label">Apply Tournament Tiebreaker Rules</span>
+    </label>
+
+    <div id="live-status"></div>
+    <div id="live-result"></div>
+  </div>
+
+  <!-- Schedule -->
+  <div class="card">
+    <div class="card-title">Schedule</div>
+    <button onclick="fetchSchedule()">Fetch Schedule</button>
+    <div id="schedule-result">
+      <div class="small" style="margin-top:10px;">Tap button to load schedule</div>
+    </div>
   </div>
 </div>
 
 <script>
-async function update(){
-  const team=document.getElementById("team").value;
-  const r=await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
-  const d=await r.json();
-  const rows=document.getElementById("rows");
-  rows.innerHTML="";
-  if(!d.standings.length){
-    rows.innerHTML="<tr><td colspan='2' class='small'>No games yet</td></tr>";
+let liveStandings = [];
+let liveTiebreakers = [];
+let currentView = 'overview';
+let applyRules = true;
+
+function toggleRules() {
+  applyRules = document.getElementById('apply-rules').checked;
+  const label = document.getElementById('rules-label');
+  if (applyRules) {
+    label.textContent = 'Apply Tournament Tiebreaker Rules';
+    label.style.color = '#4ade80';
+  } else {
+    label.textContent = 'Using icejam.ca default order';
+    label.style.color = '#f87171';
+  }
+  if (liveStandings.length > 0) {
+    fetchLive();
+  }
+}
+
+function setView(view) {
+  currentView = view;
+  document.getElementById('btn-overview').classList.toggle('active', view === 'overview');
+  document.getElementById('btn-offence').classList.toggle('active', view === 'offence');
+  if (liveStandings.length > 0) {
+    renderStandingsTable();
+  }
+}
+
+function renderStandingsTable() {
+  const result = document.getElementById("live-result");
+  let html = '';
+
+  if (currentView === 'overview') {
+    html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>OTL</th><th>PTS</th><th>GF</th><th>GA</th></tr></thead><tbody>';
+    liveStandings.forEach((t, i) => {
+      html += `<tr data-team="${t.team}">
+        <td>${i+1}</td>
+        <td>${t.team}</td>
+        <td>${t.gp}</td>
+        <td>${t.w}</td>
+        <td>${t.l}</td>
+        <td>${t.otl}</td>
+        <td><b>${t.pts}</b></td>
+        <td>${t.gf}</td>
+        <td>${t.ga}</td>
+      </tr>`;
+    });
+  } else {
+    html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>PTS</th><th>PP%</th><th>PK%</th><th>PPG</th><th>SHG</th></tr></thead><tbody>';
+    liveStandings.forEach((t, i) => {
+      const ppPct = t.pp_per ? (t.pp_per * 100).toFixed(1) + '%' : '-';
+      const pkPct = t.pk_per ? (t.pk_per * 100).toFixed(1) + '%' : '-';
+      html += `<tr data-team="${t.team}">
+        <td>${i+1}</td>
+        <td>${t.team}</td>
+        <td>${t.gp}</td>
+        <td><b>${t.pts}</b></td>
+        <td>${ppPct}</td>
+        <td>${pkPct}</td>
+        <td>${t.ppg || 0}</td>
+        <td>${t.shg || 0}</td>
+      </tr>`;
+    });
+  }
+  html += '</tbody></table>';
+  result.innerHTML = html;
+
+  // Show tiebreaker calculations if any
+  if (liveTiebreakers.length > 0) {
+    let tbHtml = '<details style="margin-top:12px;"><summary style="cursor:pointer;color:#4da3ff;font-size:13px;">Tiebreaker Calculations (' + liveTiebreakers.length + ')</summary>';
+    tbHtml += '<div style="background:#1a2538;padding:10px;margin-top:5px;border-radius:8px;font-size:12px;">';
+    liveTiebreakers.forEach((tb, i) => {
+      const color = tb.includes('TB1') ? '#4ade80' : (tb.includes('TIED') ? '#f87171' : '#9fb0cf');
+      tbHtml += `<div style="margin:3px 0;color:${color};">${i+1}. ${tb}</div>`;
+    });
+    tbHtml += '</div></details>';
+    result.innerHTML += tbHtml;
+  }
+
+  highlightTracked();
+}
+
+function populateTeamDropdown(standings) {
+  const select = document.getElementById("track-team");
+  const currentValue = select.value;
+
+  select.innerHTML = '<option value="">-- Select Team to Track --</option>';
+
+  standings.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.team;
+    opt.textContent = t.team;
+    if (t.team.toLowerCase().includes('hitmen')) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  if (currentValue && standings.some(t => t.team === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function highlightTracked() {
+  const tracked = document.getElementById("track-team").value;
+  const infoDiv = document.getElementById("tracked-info");
+
+  document.querySelectorAll('#live-result tr').forEach(tr => {
+    tr.classList.remove('hitmen');
+  });
+
+  if (!tracked || !liveStandings.length) {
+    infoDiv.style.display = 'none';
     return;
   }
-  d.standings.forEach(x=>{
-    const tr=document.createElement("tr");
-    if(x.team.toLowerCase().includes("hitmen")) tr.className="hitmen";
-    tr.innerHTML=`<td>${x.rank}</td><td>${x.team}</td>`;
-    rows.appendChild(tr);
+
+  let teamData = null;
+  let rank = 0;
+  liveStandings.forEach((t, i) => {
+    if (t.team === tracked) {
+      teamData = t;
+      rank = i + 1;
+    }
   });
+
+  if (teamData) {
+    document.querySelectorAll('#live-result tr').forEach(tr => {
+      if (tr.dataset.team === tracked) {
+        tr.classList.add('hitmen');
+      }
+    });
+
+    const total = liveStandings.length;
+    const gd = teamData.gf - teamData.ga;
+    const gdStr = gd >= 0 ? `+${gd}` : `${gd}`;
+
+    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts | GD: ${gdStr}`;
+    infoDiv.style.display = 'block';
+  } else {
+    infoDiv.style.display = 'none';
+  }
 }
+
+async function fetchLive() {
+  const status = document.getElementById("live-status");
+  const result = document.getElementById("live-result");
+
+  status.innerHTML = '<div class="msg info">Fetching from icejam.ca...</div>';
+  result.innerHTML = '';
+
+  try {
+    const r = await fetch(`/api/scrape?apply_rules=${applyRules}`);
+    const d = await r.json();
+
+    if (d.ok && d.standings && d.standings.length > 0) {
+      liveStandings = d.standings;
+      liveTiebreakers = d.tiebreaker_log || [];
+
+      const seasonInfo = d.season ? `${d.season}/${parseInt(d.season)+1}` : '';
+      const rulesInfo = d.tiebreakers_applied ? ' | Rules Applied' : '';
+      const gamesInfo = d.games_used ? ` | ${d.games_used} games` : '';
+
+      status.innerHTML = `<div class="msg success">${d.teams_found} teams | ${seasonInfo}${rulesInfo}${gamesInfo}</div>`;
+
+      populateTeamDropdown(d.standings);
+      renderStandingsTable();
+    } else {
+      status.innerHTML = `<div class="msg error">${d.error || 'No standings data found'}</div>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="msg error">Network error: ${e.message}</div>`;
+  }
+}
+
+async function fetchSchedule() {
+  const result = document.getElementById("schedule-result");
+  const tracked = document.getElementById("track-team").value || "Eastern Hitmen";
+
+  result.innerHTML = '<div class="small">Loading schedule...</div>';
+
+  try {
+    const r = await fetch(`/api/schedule?team=${encodeURIComponent(tracked)}`);
+    const d = await r.json();
+
+    if (d.ok && d.schedule && d.schedule.length > 0) {
+      let html = `<div class="small" style="margin:10px 0;">${d.games_found} games for ${d.team}</div>`;
+      html += '<table><thead><tr><th>#</th><th>Matchup</th><th>Date/Time</th><th>Rink</th></tr></thead><tbody>';
+      d.schedule.forEach((g, i) => {
+        html += `<tr>
+          <td>${g.game_num || (i+1)}</td>
+          <td><b>${g.location} ${g.opponent}</b></td>
+          <td class="small">${g.date}<br>${g.time}</td>
+          <td class="small">${g.rink || '-'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      result.innerHTML = html;
+    } else {
+      result.innerHTML = `<div class="small" style="margin-top:10px;">No schedule found for ${tracked}</div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
+}
+
+// Auto-fetch live standings on page load
+fetchLive();
 </script>
 </body>
 </html>

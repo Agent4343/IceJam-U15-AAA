@@ -455,10 +455,83 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
-def scrape_icejam(league_id: str = None) -> Dict:
-    """Scrape standings data from icejam.ca/standings/"""
+def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
+    """Scrape standings data from icejam.ca using their API"""
     try:
+        import json as json_lib
+
         # Use provided league_id or default to IceJam U15
+        lg = league_id or DEFAULT_LEAGUE
+
+        # Use the getData.php API endpoint with season parameter
+        api_url = f"{BASE}/teams/getData.php?todo=STAND&vol=2&w=211&a=125&s={season}&l={lg}"
+        logger.info(f"Fetching {api_url}")
+        response = requests.get(api_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        standings_data = []
+
+        try:
+            jsonst_data = response.json()
+            logger.info(f"Got JSON response with {len(jsonst_data)} entries")
+
+            # Extract standings from jsonStandings array inside first element
+            if jsonst_data and isinstance(jsonst_data, list) and len(jsonst_data) > 0:
+                standings_array = jsonst_data[0].get("jsonStandings", [])
+                logger.info(f"Found {len(standings_array)} teams in jsonStandings")
+
+                for team in standings_array:
+                    # RYNA Hockey fields:
+                    # ln = long name, mn = medium name, sn = short name
+                    # gp, w, l, t, otl, otw, gf, ga, pts, pim
+                    team_name = team.get("ln") or team.get("mn") or team.get("sn") or ""
+
+                    if team_name:
+                        standings_data.append({
+                            "team": team_name,
+                            "gp": int(team.get("gp", 0) or 0),
+                            "w": int(team.get("w", 0) or 0),
+                            "l": int(team.get("l", 0) or 0),
+                            "t": int(team.get("t", 0) or 0),
+                            "otl": int(team.get("otl", 0) or 0),
+                            "pts": int(team.get("pts", 0) or 0),
+                            "gf": int(team.get("gf", 0) or 0),
+                            "ga": int(team.get("ga", 0) or 0),
+                            "pim": int(team.get("pim", 0) or 0),
+                        })
+        except json_lib.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}")
+            # Fallback to HTML scraping if API fails
+            return scrape_icejam_html(lg)
+
+        # Sort by points (descending) then by goal differential
+        standings_data.sort(key=lambda x: (x["pts"], x["gf"] - x["ga"]), reverse=True)
+
+        # Add rank
+        for i, team in enumerate(standings_data, 1):
+            team["rank"] = i
+
+        return {
+            "ok": True,
+            "url": api_url,
+            "league_id": lg,
+            "season": season,
+            "teams_found": len(standings_data),
+            "standings": standings_data
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Scrape error: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "url": api_url if 'api_url' in locals() else BASE
+        }
+
+
+def scrape_icejam_html(league_id: str = None) -> Dict:
+    """Fallback: Scrape standings from HTML page"""
+    try:
         lg = league_id or DEFAULT_LEAGUE
         url = f"{STANDINGS_URL}?lg={lg}"
         logger.info(f"Fetching {url}")
@@ -813,9 +886,12 @@ def clear_games():
 
 
 @app.get("/api/scrape")
-def scrape(league: str = Query(None, description="League ID (default: IceJam U15)")):
-    """Scrape standings from icejam.ca/standings/"""
-    return scrape_icejam(league)
+def scrape(
+    league: str = Query(None, description="League ID (default: IceJam U15)"),
+    season: str = Query("2025", description="Season year (default: 2025 for 2025/26)")
+):
+    """Scrape standings from icejam.ca API"""
+    return scrape_icejam(league, season)
 
 
 @app.get("/api/playoff-bracket")

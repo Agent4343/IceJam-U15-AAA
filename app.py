@@ -749,3 +749,39 @@ def debug_schedule():
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/debug-standings")
+def debug_standings():
+    """Debug: show structure from icejam.ca/standings/"""
+    try:
+        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        html = response.text
+        # Look for JSON data patterns
+        import json as json_lib
+
+        # Find jsonTeams or similar
+        json_patterns = []
+        for pattern_name in ['jsonTeams', 'jsonStandings', 'json', 'standings']:
+            match = re.search(rf'{pattern_name}\s*=\s*(\[.*?\]);', html, re.DOTALL)
+            if match:
+                try:
+                    data = json_lib.loads(match.group(1))
+                    json_patterns.append({
+                        "name": pattern_name,
+                        "count": len(data),
+                        "sample": data[:2] if len(data) > 0 else []
+                    })
+                except:
+                    json_patterns.append({"name": pattern_name, "error": "parse failed"})
+
+        return {
+            "ok": True,
+            "total_length": len(html),
+            "json_patterns_found": json_patterns,
+            "preview": html[1000:3000]  # Middle section
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

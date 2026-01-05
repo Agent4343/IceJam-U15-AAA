@@ -333,7 +333,9 @@ async function fetchLive() {
     if (d.ok && d.standings && d.standings.length > 0) {
       liveStandings = d.standings;
       const seasonInfo = d.season ? ` (${d.season}/${parseInt(d.season)+1})` : '';
-      status.innerHTML = `<div class="msg success">IceJam U15 AAA${seasonInfo} - ${d.teams_found} teams</div>`;
+      const rulesInfo = d.tiebreakers_applied ? ' ✓ Rules Applied' : '';
+      const gamesInfo = d.games_used ? ` (${d.games_used} games)` : '';
+      status.innerHTML = `<div class="msg success">IceJam U15 AAA${seasonInfo} - ${d.teams_found} teams${rulesInfo}${gamesInfo}</div>`;
 
       // Populate team dropdown
       populateTeamDropdown(d.standings);

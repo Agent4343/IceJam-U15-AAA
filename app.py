@@ -537,6 +537,175 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
         }
 
 
+def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
+    """Fetch game scores from icejam.ca for tiebreaker calculations"""
+    try:
+        import json as json_lib
+        lg = league_id or DEFAULT_LEAGUE
+
+        # Fetch scores from the scores page
+        scores_url = f"{BASE}/scores/"
+        logger.info(f"Fetching scores from {scores_url}")
+        response = requests.get(scores_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        html = response.text
+        games = []
+
+        # Try to extract json variable with game data
+        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        if json_match:
+            try:
+                games_json = json_lib.loads(json_match.group(1))
+                logger.info(f"Found {len(games_json)} games in scores JSON")
+
+                for game in games_json:
+                    # Filter by league
+                    game_league = str(game.get("lg", ""))
+                    if game_league != lg:
+                        continue
+
+                    home_team = game.get("h_n", "")
+                    away_team = game.get("v_n", "")
+                    home_score = int(game.get("hf", 0) or 0)
+                    away_score = int(game.get("vf", 0) or 0)
+                    game_status = game.get("gs", "")  # Game status
+
+                    # Only include completed games
+                    if home_team and away_team and game_status in ["F", "Final", "final", ""]:
+                        games.append({
+                            "home": home_team,
+                            "away": away_team,
+                            "home_score": home_score,
+                            "away_score": away_score,
+                            "ot": "OT" in str(game.get("gp", "")),
+                            "game_num": game.get("gn", ""),
+                        })
+            except json_lib.JSONDecodeError as e:
+                logger.error(f"JSON parse error in scores: {e}")
+
+        return {
+            "ok": True,
+            "games_found": len(games),
+            "games": games
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Scores fetch error: {e}")
+        return {"ok": False, "error": str(e), "games": []}
+
+
+def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> List[Dict]:
+    """
+    Apply tournament tiebreaker rules to live standings data.
+    Uses the 9-step tiebreaker formula from the rules.
+    """
+    if not standings or not games:
+        return standings
+
+    # Build head-to-head record
+    h2h = {}  # {(team1, team2): {"team1_pts": 0, "team2_pts": 0, "first_goal": ""}}
+
+    for game in games:
+        home = game["home"]
+        away = game["away"]
+        home_score = game["home_score"]
+        away_score = game["away_score"]
+        ot = game.get("ot", False)
+
+        # Calculate points
+        if home_score > away_score:
+            home_pts = 2
+            away_pts = 1 if ot else 0
+        elif away_score > home_score:
+            away_pts = 2
+            home_pts = 1 if ot else 0
+        else:
+            home_pts = away_pts = 1
+
+        # Store h2h record (use sorted tuple as key)
+        key = tuple(sorted([home, away]))
+        if key not in h2h:
+            h2h[key] = {home: 0, away: 0}
+        h2h[key][home] = h2h[key].get(home, 0) + home_pts
+        h2h[key][away] = h2h[key].get(away, 0) + away_pts
+
+    def compare_teams(t1: Dict, t2: Dict) -> int:
+        """Compare two teams using tiebreaker rules. Returns -1 if t1 > t2, 1 if t2 > t1, 0 if tie."""
+
+        # Primary: Points
+        if t1["pts"] != t2["pts"]:
+            return -1 if t1["pts"] > t2["pts"] else 1
+
+        # Tiebreaker 1: Head-to-head record
+        key = tuple(sorted([t1["team"], t2["team"]]))
+        if key in h2h:
+            t1_h2h = h2h[key].get(t1["team"], 0)
+            t2_h2h = h2h[key].get(t2["team"], 0)
+            if t1_h2h != t2_h2h:
+                return -1 if t1_h2h > t2_h2h else 1
+
+        # Tiebreaker 2: Most wins
+        if t1["w"] != t2["w"]:
+            return -1 if t1["w"] > t2["w"] else 1
+
+        # Tiebreaker 3: Goal average (GF / (GF + GA))
+        t1_ga = t1["gf"] / (t1["gf"] + t1["ga"]) if (t1["gf"] + t1["ga"]) > 0 else 0
+        t2_ga = t2["gf"] / (t2["gf"] + t2["ga"]) if (t2["gf"] + t2["ga"]) > 0 else 0
+        if abs(t1_ga - t2_ga) > 0.0001:
+            return -1 if t1_ga > t2_ga else 1
+
+        # Tiebreaker 4: Fewest goals against
+        if t1["ga"] != t2["ga"]:
+            return -1 if t1["ga"] < t2["ga"] else 1
+
+        # Tiebreaker 5: Most goals for
+        if t1["gf"] != t2["gf"]:
+            return -1 if t1["gf"] > t2["gf"] else 1
+
+        # Tiebreaker 6: Fewest penalty minutes
+        if t1.get("pim", 0) != t2.get("pim", 0):
+            return -1 if t1.get("pim", 0) < t2.get("pim", 0) else 1
+
+        # Tiebreakers 7-9 require data we don't have from the API
+        # (first goal in h2h, fastest first goal, coin toss)
+        return 0
+
+    # Sort standings using tiebreaker rules
+    from functools import cmp_to_key
+    sorted_standings = sorted(standings, key=cmp_to_key(compare_teams))
+
+    # Update ranks
+    for i, team in enumerate(sorted_standings, 1):
+        team["rank"] = i
+
+    return sorted_standings
+
+
+def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") -> Dict:
+    """Scrape standings and apply tournament tiebreaker rules"""
+    # Get standings
+    standings_result = scrape_icejam(league_id, season)
+    if not standings_result.get("ok"):
+        return standings_result
+
+    # Get game scores for head-to-head tiebreakers
+    scores_result = fetch_game_scores(league_id, season)
+
+    if scores_result.get("ok") and scores_result.get("games"):
+        # Apply tiebreaker rules
+        standings_result["standings"] = apply_tiebreakers_to_live(
+            standings_result["standings"],
+            scores_result["games"]
+        )
+        standings_result["tiebreakers_applied"] = True
+        standings_result["games_used"] = scores_result["games_found"]
+    else:
+        standings_result["tiebreakers_applied"] = False
+        standings_result["tiebreaker_note"] = "Could not fetch game scores for h2h tiebreakers"
+
+    return standings_result
+
+
 def scrape_icejam_html(league_id: str = None) -> Dict:
     """Fallback: Scrape standings from HTML page"""
     try:
@@ -896,10 +1065,22 @@ def clear_games():
 @app.get("/api/scrape")
 def scrape(
     league: str = Query(None, description="League ID (default: IceJam U15)"),
-    season: str = Query("2025", description="Season year (default: 2025 for 2025/26)")
+    season: str = Query("2025", description="Season year (default: 2025 for 2025/26)"),
+    apply_rules: bool = Query(True, description="Apply tournament tiebreaker rules")
 ):
-    """Scrape standings from icejam.ca API"""
+    """Scrape standings from icejam.ca API with optional tiebreaker rules"""
+    if apply_rules:
+        return scrape_icejam_with_tiebreakers(league, season)
     return scrape_icejam(league, season)
+
+
+@app.get("/api/scores")
+def get_scores(
+    league: str = Query(None, description="League ID"),
+    season: str = Query("2025", description="Season year")
+):
+    """Get game scores for tiebreaker calculations"""
+    return fetch_game_scores(league, season)
 
 
 @app.get("/api/playoff-bracket")

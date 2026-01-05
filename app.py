@@ -1070,44 +1070,54 @@ def debug_leagues():
         html = response.text
         import json as json_lib
 
-        # Look for jsonSLeague variable which contains league options
+        # Look for jsonSLeague variable - try multiple formats
         leagues_info = []
+        sleague_raw = None
 
-        # Find jsonSLeague = [...]
-        sleague_match = re.search(r'jsonSLeague\s*=\s*"([^"]*)"', html)
+        # Try: let jsonSLeague = "..." (escaped JSON string)
+        sleague_match = re.search(r'let\s+jsonSLeague\s*=\s*"([^"]*)"', html)
         if sleague_match:
+            sleague_raw = sleague_match.group(1)
             try:
-                leagues_data = json_lib.loads(sleague_match.group(1))
-                leagues_info = leagues_data
+                # Unescape the JSON string
+                unescaped = sleague_raw.replace('\\"', '"').replace('\\\\', '\\')
+                leagues_info = json_lib.loads(unescaped)
             except:
                 pass
 
-        # Also look for league dropdown options or leagueDef
+        # Try: jsonSLeague = [...] (direct array)
+        if not leagues_info:
+            sleague_match2 = re.search(r'jsonSLeague\s*=\s*(\[.*?\]);', html, re.DOTALL)
+            if sleague_match2:
+                try:
+                    leagues_info = json_lib.loads(sleague_match2.group(1))
+                except:
+                    sleague_raw = sleague_match2.group(1)[:500]
+
+        # Look for leagueDef and leagueInNew
         league_def_match = re.search(r'leagueDef\s*=\s*(\d+)', html)
         league_def = league_def_match.group(1) if league_def_match else None
 
-        # Find all league IDs mentioned in the page
-        league_ids = re.findall(r'lg["\']?\s*[:=]\s*["\']?(\d{5,})', html)
-        unique_leagues = list(set(league_ids))
+        league_in_new_match = re.search(r'leagueInNew\s*=\s*(\d+)', html)
+        league_in_new = league_in_new_match.group(1) if league_in_new_match else None
 
-        # Look for select/dropdown with leagues
-        soup = BeautifulSoup(html, "html.parser")
-        selects = soup.find_all("select")
-        dropdown_options = []
-        for select in selects:
-            options = select.find_all("option")
-            for opt in options:
-                dropdown_options.append({
-                    "value": opt.get("value", ""),
-                    "text": opt.get_text(strip=True)
-                })
+        # Find all 6-digit numbers that might be league IDs
+        all_league_ids = re.findall(r'\b(50\d{4})\b', html)
+        unique_leagues = list(set(all_league_ids))
+
+        # Look for "IceJam" or "U15" mentions with nearby numbers
+        icejam_context = []
+        for match in re.finditer(r'.{0,50}(icejam|u15).{0,50}', html, re.IGNORECASE):
+            icejam_context.append(match.group(0))
 
         return {
             "ok": True,
             "current_league_def": league_def,
-            "unique_league_ids": unique_leagues[:20],
-            "dropdown_options": dropdown_options[:30],
-            "leagues_info": leagues_info
+            "league_in_new": league_in_new,
+            "unique_league_ids": unique_leagues[:30],
+            "leagues_info": leagues_info[:20] if leagues_info else [],
+            "sleague_raw_preview": sleague_raw[:300] if sleague_raw else None,
+            "icejam_context": icejam_context[:10]
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

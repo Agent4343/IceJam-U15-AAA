@@ -237,13 +237,14 @@ async function fetchSchedule() {
     if (d.ok && d.schedule && d.schedule.length > 0) {
       status.innerHTML = `<div class="msg success">Found ${d.games_found} games for ${d.team}</div>`;
 
-      let html = '<table><thead><tr><th>#</th><th>Game Details</th><th>Date</th><th>Time</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>#</th><th>Matchup</th><th>Date/Time</th><th>Rink</th></tr></thead><tbody>';
       d.schedule.forEach((g, i) => {
+        const matchup = `${g.location} ${g.opponent}`;
         html += `<tr>
           <td>${g.game_num || (i+1)}</td>
-          <td class="small">${g.details}</td>
-          <td class="small">${g.date || '-'}</td>
-          <td>${g.time || '-'}</td>
+          <td><b>${matchup}</b></td>
+          <td class="small">${g.date}<br>${g.time}</td>
+          <td class="small">${g.rink || '-'}</td>
         </tr>`;
       });
       html += '</tbody></table>';

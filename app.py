@@ -537,75 +537,56 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
         response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        html = response.text
         schedule_data = []
 
-        # Find all game rows - looking for table rows or divs containing game info
-        tables = soup.find_all("table")
-        logger.info(f"Found {len(tables)} tables for schedule")
+        # Extract the json = [...] JavaScript variable
+        import json as json_lib
+        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
 
-        for table in tables:
-            rows = table.find_all("tr")
-            for row in rows:
-                cells = row.find_all(["td", "th"])
-                row_text = row.get_text(" ", strip=True).lower()
+        if json_match:
+            try:
+                games_json = json_lib.loads(json_match.group(1))
+                logger.info(f"Found {len(games_json)} games in JSON")
 
-                # Check if this row contains the tracked team
-                if team.lower() in row_text or "hitmen" in row_text:
-                    try:
-                        # Extract game info from the row
-                        game_info = {
-                            "raw": row.get_text(" | ", strip=True),
-                            "cells": [c.get_text(strip=True) for c in cells]
-                        }
+                # Filter for games containing the tracked team
+                team_lower = team.lower()
+                search_terms = [team_lower]
+                # Also search for short name like "Hitmen"
+                if "hitmen" in team_lower:
+                    search_terms.append("hitmen")
 
-                        # Try to parse structured data
-                        text_parts = row.get_text(" ", strip=True).split()
+                for game in games_json:
+                    home = (game.get("h_n") or "").lower()
+                    visitor = (game.get("v_n") or "").lower()
 
-                        # Look for game number (usually a standalone number)
-                        game_num = ""
-                        for part in text_parts:
-                            if part.isdigit() and len(part) <= 3:
-                                game_num = part
-                                break
+                    # Check if team is playing
+                    is_team_game = any(term in home or term in visitor for term in search_terms)
 
-                        # Look for time pattern (HH:MMam/pm)
-                        time_str = ""
-                        for part in text_parts:
-                            if ("am" in part.lower() or "pm" in part.lower()) and ":" in part:
-                                time_str = part
-                                break
-
-                        # Look for date pattern
-                        date_str = ""
-                        days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-                        for i, part in enumerate(text_parts):
-                            if part.lower().rstrip(",") in days:
-                                # Get day and following parts for date
-                                date_str = " ".join(text_parts[i:i+3])
-                                break
+                    if is_team_game:
+                        # Determine opponent and home/away
+                        if any(term in home for term in search_terms):
+                            opponent = game.get("v_n", "TBD")
+                            location = "vs"  # Home game
+                        else:
+                            opponent = game.get("h_n", "TBD")
+                            location = "@"  # Away game
 
                         schedule_data.append({
-                            "game_num": game_num,
-                            "time": time_str,
-                            "date": date_str,
-                            "details": game_info["raw"][:200]
+                            "game_num": str(game.get("gn", "")),
+                            "opponent": opponent,
+                            "location": location,
+                            "time": game.get("gt3", ""),
+                            "date": game.get("gdl", ""),
+                            "rink": game.get("rn", ""),
+                            "league": game.get("lg_n", "")
                         })
 
-                    except Exception as e:
-                        logger.warning(f"Could not parse schedule row: {e}")
+            except json_lib.JSONDecodeError as e:
+                logger.error(f"JSON parse error: {e}")
 
-        # Also check for div-based layouts
-        game_divs = soup.find_all("div", class_=lambda x: x and "game" in x.lower() if x else False)
-        for div in game_divs:
-            div_text = div.get_text(" ", strip=True).lower()
-            if team.lower() in div_text or "hitmen" in div_text:
-                schedule_data.append({
-                    "game_num": "",
-                    "time": "",
-                    "date": "",
-                    "details": div.get_text(" | ", strip=True)[:200]
-                })
+        # Sort by game number
+        schedule_data.sort(key=lambda x: int(x["game_num"]) if x["game_num"].isdigit() else 0)
 
         return {
             "ok": True,

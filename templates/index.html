@@ -224,20 +224,10 @@ function highlightTracked() {
     });
 
     const total = liveStandings.length;
-    let playoffInfo = '';
-    if (rank <= 16) {
-      const opponentRank = 17 - rank;
-      if (opponentRank <= total) {
-        const opponent = liveStandings[opponentRank - 1];
-        playoffInfo = ` | Round 1: vs #${opponentRank} ${opponent.team}`;
-      } else {
-        playoffInfo = ` | Round 1: BYE`;
-      }
-    } else {
-      playoffInfo = ` | Outside playoffs (top 16)`;
-    }
+    const gd = teamData.gf - teamData.ga;
+    const gdStr = gd >= 0 ? `+${gd}` : `${gd}`;
 
-    infoDiv.innerHTML = `<b>#${rank} ${tracked}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts${playoffInfo}`;
+    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts | GD: ${gdStr}`;
     infoDiv.style.display = 'block';
   } else {
     infoDiv.style.display = 'none';

@@ -22,37 +22,29 @@ logger = logging.getLogger(__name__)
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
-DEFAULT_TEAM = "Eastern Hitmen"
+DEFAULT_TEAM = "Moncton Flyers"
 DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (found from jsonSLeague)
 
-# All 26 teams from IceJam U15 AAA 2026
+# All 18 teams from IceJam U15 AAA 2026
 TEAMS = [
-    "Charlottetown Islanders",
-    "Dartmouth Whalers",
-    "Dieppe Flyers",
-    "Eastern AAA U15 Knights",
-    "Eastern Express",
-    "Eastern Hitmen",
-    "Eastern Thunder",
+    "Moncton Flyers",
+    "Cape Breton West Islanders",
+    "March and Mill Co Hunters",
+    "Halifax McDonalds",
+    "Steele Subaru",
     "Fredericton Caps",
-    "Halifax Wolverines",
-    "Harbour Rage",
-    "Joneljim Cougars",
-    "Martello Wealth Bandits",
-    "Mid-Isle Matrix",
-    "Moncton Hawks",
-    "Northern Rivermen",
-    "Ottawa Jr 67's",
-    "Prince County Warriors",
-    "Southern Rangers",
-    "The Gulls",
-    "The Novas",
-    "The Rangers",
-    "Tri-Pen Osprey",
-    "Truro Bearcats",
+    "East Coast Blizzard",
+    "Northern Moose",
+    "Weeks`s Majors",
+    "Commandeurs Collège de Lévis",
     "Valley Wildcats",
-    "WearWell Bombers",
-    "Western Hurricanes",
+    "South Shore Mustangs",
+    "Charlottetown Knights",
+    "Saint John Vito`s",
+    "Nissan Growlers",
+    "Kensington Wild",
+    "Sydney Rush",
+    "Central Impact",
 ]
 
 # Browser headers to avoid being blocked (no Accept-Encoding to get plain text)

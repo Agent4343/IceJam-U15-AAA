@@ -23,6 +23,7 @@ BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
+DEFAULT_LEAGUE = "500239"  # IceJam U15 league ID (found from site)
 
 # All 26 teams from IceJam U15 AAA 2026
 TEAMS = [
@@ -1050,6 +1051,59 @@ def debug_standings():
             "tables_found": len(soup.find_all("table")),
             "tables_info": tables_info,
             "iframes": iframe_srcs
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/debug-leagues")
+def debug_leagues():
+    """Debug: find available leagues from icejam.ca/standings/"""
+    try:
+        response = requests.get(STANDINGS_URL, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        html = response.text
+        import json as json_lib
+
+        # Look for jsonSLeague variable which contains league options
+        leagues_info = []
+
+        # Find jsonSLeague = [...]
+        sleague_match = re.search(r'jsonSLeague\s*=\s*"([^"]*)"', html)
+        if sleague_match:
+            try:
+                leagues_data = json_lib.loads(sleague_match.group(1))
+                leagues_info = leagues_data
+            except:
+                pass
+
+        # Also look for league dropdown options or leagueDef
+        league_def_match = re.search(r'leagueDef\s*=\s*(\d+)', html)
+        league_def = league_def_match.group(1) if league_def_match else None
+
+        # Find all league IDs mentioned in the page
+        league_ids = re.findall(r'lg["\']?\s*[:=]\s*["\']?(\d{5,})', html)
+        unique_leagues = list(set(league_ids))
+
+        # Look for select/dropdown with leagues
+        soup = BeautifulSoup(html, "html.parser")
+        selects = soup.find_all("select")
+        dropdown_options = []
+        for select in selects:
+            options = select.find_all("option")
+            for opt in options:
+                dropdown_options.append({
+                    "value": opt.get("value", ""),
+                    "text": opt.get_text(strip=True)
+                })
+
+        return {
+            "ok": True,
+            "current_league_def": league_def,
+            "unique_league_ids": unique_leagues[:20],
+            "dropdown_options": dropdown_options[:30],
+            "leagues_info": leagues_info
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

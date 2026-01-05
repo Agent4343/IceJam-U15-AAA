@@ -745,11 +745,26 @@ def debug_schedule():
     try:
         response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
         response.raise_for_status()
-        # Return first 5000 chars of HTML for debugging
+
+        html = response.text
+        # Find sections containing "Hitmen"
+        hitmen_sections = []
+        lines = html.split('\n')
+        for i, line in enumerate(lines):
+            if 'hitmen' in line.lower():
+                # Get surrounding context (5 lines before and after)
+                start = max(0, i - 5)
+                end = min(len(lines), i + 10)
+                hitmen_sections.append({
+                    "line": i,
+                    "context": '\n'.join(lines[start:end])
+                })
+
         return {
             "ok": True,
-            "html_preview": response.text[:5000],
-            "total_length": len(response.text)
+            "total_length": len(html),
+            "hitmen_mentions": len(hitmen_sections),
+            "sections": hitmen_sections[:5]  # First 5 matches
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

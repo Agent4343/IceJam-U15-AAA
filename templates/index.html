@@ -11,15 +11,11 @@ body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; back
 h1 { margin:0; font-size:22px; }
 .card { background:#121a2a; border-radius:14px; padding:16px; margin-top:12px; }
 .card-title { font-size:14px; font-weight:600; margin-bottom:12px; color:#4da3ff; }
-button,input,select { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; box-sizing:border-box; }
-input,select { background:#1a2538; color:#fff; margin-bottom:8px; -webkit-appearance:none; }
-select { cursor:pointer; }
+button,select { width:100%; padding:14px; font-size:16px; border-radius:12px; border:none; box-sizing:border-box; }
+select { background:#1a2538; color:#fff; margin-bottom:8px; -webkit-appearance:none; cursor:pointer; }
 select option { background:#1a2538; color:#fff; }
-button { background:#4da3ff; font-weight:700; margin-top:10px; cursor:pointer; color:#fff; }
-button:active { background:#3d8ae0; }
-button.secondary { background:#2a3350; }
-button.danger { background:#dc3545; }
-button.live { background:#1e8e3e; }
+button { background:#1e8e3e; font-weight:700; margin-top:10px; cursor:pointer; color:#fff; }
+button:active { background:#167a2e; }
 .row { display:flex; gap:8px; }
 .row > * { flex:1; }
 table { width:100%; border-collapse:collapse; margin-top:10px; }
@@ -27,16 +23,6 @@ th,td { padding:8px; border-bottom:1px solid #2a3350; font-size:14px; text-align
 th { color:#9fb0cf; font-weight:500; }
 .hitmen { background:#1e8e3e33; font-weight:700; }
 .small { color:#9fb0cf; font-size:12px; }
-.tabs { display:flex; gap:8px; margin-bottom:12px; }
-.tab { flex:1; padding:10px; text-align:center; background:#1a2538; border-radius:8px; cursor:pointer; font-size:14px; }
-.tab.active { background:#4da3ff; }
-.panel { display:none; }
-.panel.active { display:block; }
-.score-input { font-size:24px; text-align:center; font-weight:700; }
-.vs { text-align:center; padding:8px; color:#9fb0cf; font-size:14px; }
-.checkbox-row { display:flex; align-items:center; gap:8px; padding:8px 0; }
-.checkbox-row input { width:auto; }
-.checkbox-row label { color:#9fb0cf; font-size:14px; }
 .msg { padding:12px; border-radius:8px; margin-top:10px; font-size:14px; }
 .msg.success { background:#1e8e3e33; color:#4ade80; }
 .msg.error { background:#dc354533; color:#f87171; }
@@ -45,8 +31,13 @@ th { color:#9fb0cf; font-weight:500; }
 .header-links { display:flex; gap:8px; }
 .header-links a { background:#2a3350; color:#fff; padding:8px 14px; border-radius:8px; text-decoration:none; font-size:13px; font-weight:600; }
 .live-badge { display:inline-block; background:#1e8e3e; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:6px; }
-#live-result { margin-top:12px; max-height:300px; overflow-y:auto; }
-#live-result table { font-size:12px; }
+#live-result { margin-top:12px; }
+#live-result table { font-size:13px; }
+.toggle-row { display:flex; gap:8px; margin-top:8px; }
+.toggle-btn { flex:1; padding:10px; text-align:center; background:#1a2538; border-radius:8px; cursor:pointer; font-size:14px; border:none; color:#fff; }
+.toggle-btn.active { background:#28a745; }
+.rules-toggle { display:flex; align-items:center; gap:8px; font-size:14px; padding:8px 12px; background:#1a2538; border-radius:8px; margin-top:8px; }
+.rules-toggle input { width:auto; }
 </style>
 </head>
 
@@ -55,154 +46,65 @@ th { color:#9fb0cf; font-weight:500; }
   <div class="header">
     <div>
       <h1>IceJam U15 AAA</h1>
-      <div class="small">Mobile standings tracker</div>
+      <div class="small">Eastern Hitmen Standings Tracker</div>
     </div>
     <div class="header-links">
       <a href="/rules">Rules</a>
     </div>
   </div>
 
-  <!-- Live Data Card -->
+  <!-- Live Standings -->
   <div class="card">
-    <div class="card-title">Live from IceJam.ca <span class="live-badge">LIVE</span></div>
+    <div class="card-title">Live Standings <span class="live-badge">LIVE</span></div>
+
     <select id="track-team" onchange="highlightTracked()">
       <option value="">-- Select Team to Track --</option>
     </select>
+
     <div id="tracked-info" class="msg info" style="display:none;"></div>
-    <div class="row">
-      <button class="live" onclick="fetchLive()">Fetch Standings</button>
-      <button class="live" onclick="fetchSchedule()">Fetch Schedule</button>
+
+    <button onclick="fetchLive()">Refresh Standings</button>
+
+    <div class="toggle-row">
+      <button id="btn-overview" class="toggle-btn active" onclick="setView('overview')">Overview</button>
+      <button id="btn-offence" class="toggle-btn" onclick="setView('offence')">Offence</button>
     </div>
-    <div class="row" style="margin-top:5px;">
-      <button id="btn-overview" class="live" style="background:#28a745;" onclick="setView('overview')">Overview</button>
-      <button id="btn-offence" class="live" onclick="setView('offence')">Offence</button>
-    </div>
-    <div class="row" style="margin-top:5px;">
-      <label style="display:flex;align-items:center;gap:8px;font-size:14px;padding:5px 10px;background:#f0f0f0;border-radius:5px;cursor:pointer;">
-        <input type="checkbox" id="apply-rules" checked onchange="toggleRules()">
-        <span id="rules-label">Apply Tournament Rules (Tiebreakers)</span>
-      </label>
-    </div>
+
+    <label class="rules-toggle">
+      <input type="checkbox" id="apply-rules" checked onchange="toggleRules()">
+      <span id="rules-label">Apply Tournament Tiebreaker Rules</span>
+    </label>
+
     <div id="live-status"></div>
     <div id="live-result"></div>
   </div>
 
-  <!-- Schedule Card -->
+  <!-- Schedule -->
   <div class="card">
-    <div class="card-title">📅 Upcoming Games</div>
+    <div class="card-title">Schedule</div>
+    <button onclick="fetchSchedule()">Fetch Schedule</button>
     <div id="schedule-result">
-      <div class="small">Tap "Fetch Schedule" above to load games</div>
+      <div class="small" style="margin-top:10px;">Tap button to load schedule</div>
     </div>
-  </div>
-
-  <div class="card">
-    <div class="tabs">
-      <div class="tab active" onclick="showTab('standings')">My Standings</div>
-      <div class="tab" onclick="showTab('addgame')">Add Game</div>
-    </div>
-
-    <!-- Standings Panel -->
-    <div id="standings-panel" class="panel active">
-      <select id="team">
-        {% for t in teams %}
-        <option value="{{ t }}" {% if t == default_team %}selected{% endif %}>{{ t }}</option>
-        {% endfor %}
-      </select>
-      <button onclick="update()">Refresh My Standings</button>
-    </div>
-
-    <!-- Add Game Panel -->
-    <div id="addgame-panel" class="panel">
-      <select id="team_a">
-        <option value="">-- Home Team --</option>
-        {% for t in teams %}
-        <option value="{{ t }}">{{ t }}</option>
-        {% endfor %}
-      </select>
-      <input id="score_a" type="number" min="0" class="score-input" placeholder="0" value="">
-      <div class="vs">vs</div>
-      <input id="score_b" type="number" min="0" class="score-input" placeholder="0" value="">
-      <select id="team_b">
-        <option value="">-- Away Team --</option>
-        {% for t in teams %}
-        <option value="{{ t }}">{{ t }}</option>
-        {% endfor %}
-      </select>
-      <div class="checkbox-row">
-        <input type="checkbox" id="ot">
-        <label for="ot">Overtime / Shootout</label>
-      </div>
-
-      <div class="card-title" style="margin-top:16px;font-size:12px;">Tiebreaker Data (Optional)</div>
-      <div class="row">
-        <div>
-          <label class="small">Home PIM</label>
-          <input id="pim_a" type="number" min="0" placeholder="0" value="">
-        </div>
-        <div>
-          <label class="small">Away PIM</label>
-          <input id="pim_b" type="number" min="0" placeholder="0" value="">
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label class="small">First Goal By</label>
-          <select id="first_goal_team">
-            <option value="">-- Not tracked --</option>
-            <option value="a">Home Team</option>
-            <option value="b">Away Team</option>
-          </select>
-        </div>
-        <div>
-          <label class="small">Time (seconds)</label>
-          <input id="first_goal_time" type="number" min="0" placeholder="e.g. 120" value="">
-        </div>
-      </div>
-
-      <button onclick="addGame()">Add Game</button>
-      <div id="game-msg"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">My Standings <span id="games-count" class="small"></span></div>
-    <table>
-      <thead>
-        <tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>PTS</th></tr>
-      </thead>
-      <tbody id="rows">
-        <tr><td colspan="7" class="small">Tap Update Standings</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <div class="row">
-      <button class="secondary" onclick="listGames()">View Games</button>
-      <button class="danger" onclick="clearGames()">Clear All</button>
-    </div>
-    <div id="games-list"></div>
   </div>
 </div>
 
 <script>
-// Store fetched standings for team selection
 let liveStandings = [];
-let liveTiebreakers = []; // Tiebreaker calculation log
-let currentView = 'overview'; // 'overview' or 'offence'
-let applyRules = true; // Apply tournament tiebreaker rules
+let liveTiebreakers = [];
+let currentView = 'overview';
+let applyRules = true;
 
 function toggleRules() {
   applyRules = document.getElementById('apply-rules').checked;
   const label = document.getElementById('rules-label');
   if (applyRules) {
-    label.innerHTML = 'Apply Tournament Rules (Tiebreakers) ✓';
-    label.style.color = '#28a745';
+    label.textContent = 'Apply Tournament Tiebreaker Rules';
+    label.style.color = '#4ade80';
   } else {
-    label.innerHTML = 'Tournament Rules OFF (using icejam.ca order)';
-    label.style.color = '#dc3545';
+    label.textContent = 'Using icejam.ca default order';
+    label.style.color = '#f87171';
   }
-  // Re-fetch if we have data
   if (liveStandings.length > 0) {
     fetchLive();
   }
@@ -210,10 +112,8 @@ function toggleRules() {
 
 function setView(view) {
   currentView = view;
-  // Update button styles
-  document.getElementById('btn-overview').style.background = view === 'overview' ? '#28a745' : '';
-  document.getElementById('btn-offence').style.background = view === 'offence' ? '#28a745' : '';
-  // Re-render table if we have data
+  document.getElementById('btn-overview').classList.toggle('active', view === 'overview');
+  document.getElementById('btn-offence').classList.toggle('active', view === 'offence');
   if (liveStandings.length > 0) {
     renderStandingsTable();
   }
@@ -239,7 +139,6 @@ function renderStandingsTable() {
       </tr>`;
     });
   } else {
-    // Offence view
     html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>PTS</th><th>PP%</th><th>PK%</th><th>PPG</th><th>SHG</th></tr></thead><tbody>';
     liveStandings.forEach((t, i) => {
       const ppPct = t.pp_per ? (t.pp_per * 100).toFixed(1) + '%' : '-';
@@ -258,31 +157,38 @@ function renderStandingsTable() {
   }
   html += '</tbody></table>';
   result.innerHTML = html;
-  highlightTracked();
-}
 
-function showTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById(name + '-panel').classList.add('active');
+  // Show tiebreaker calculations if any
+  if (liveTiebreakers.length > 0) {
+    let tbHtml = '<details style="margin-top:12px;"><summary style="cursor:pointer;color:#4da3ff;font-size:13px;">Tiebreaker Calculations (' + liveTiebreakers.length + ')</summary>';
+    tbHtml += '<div style="background:#1a2538;padding:10px;margin-top:5px;border-radius:8px;font-size:12px;">';
+    liveTiebreakers.forEach((tb, i) => {
+      const color = tb.includes('TB1') ? '#4ade80' : (tb.includes('TIED') ? '#f87171' : '#9fb0cf');
+      tbHtml += `<div style="margin:3px 0;color:${color};">${i+1}. ${tb}</div>`;
+    });
+    tbHtml += '</div></details>';
+    result.innerHTML += tbHtml;
+  }
+
+  highlightTracked();
 }
 
 function populateTeamDropdown(standings) {
   const select = document.getElementById("track-team");
   const currentValue = select.value;
 
-  // Clear existing options except first
   select.innerHTML = '<option value="">-- Select Team to Track --</option>';
 
   standings.forEach(t => {
     const opt = document.createElement("option");
     opt.value = t.team;
     opt.textContent = t.team;
+    if (t.team.toLowerCase().includes('hitmen')) {
+      opt.selected = true;
+    }
     select.appendChild(opt);
   });
 
-  // Restore selection if still valid
   if (currentValue && standings.some(t => t.team === currentValue)) {
     select.value = currentValue;
   }
@@ -292,7 +198,6 @@ function highlightTracked() {
   const tracked = document.getElementById("track-team").value;
   const infoDiv = document.getElementById("tracked-info");
 
-  // Remove all highlights
   document.querySelectorAll('#live-result tr').forEach(tr => {
     tr.classList.remove('hitmen');
   });
@@ -302,7 +207,6 @@ function highlightTracked() {
     return;
   }
 
-  // Find and highlight tracked team
   let teamData = null;
   let rank = 0;
   liveStandings.forEach((t, i) => {
@@ -313,30 +217,27 @@ function highlightTracked() {
   });
 
   if (teamData) {
-    // Highlight row in table
     document.querySelectorAll('#live-result tr').forEach(tr => {
-      if (tr.textContent.includes(tracked)) {
+      if (tr.dataset.team === tracked) {
         tr.classList.add('hitmen');
       }
     });
 
-    // Show team info
     const total = liveStandings.length;
     let playoffInfo = '';
     if (rank <= 16) {
-      // Calculate playoff opponent
       const opponentRank = 17 - rank;
       if (opponentRank <= total) {
         const opponent = liveStandings[opponentRank - 1];
-        playoffInfo = `<br>Round 1: #${rank} vs #${opponentRank} ${opponent.team}`;
+        playoffInfo = ` | Round 1: vs #${opponentRank} ${opponent.team}`;
       } else {
-        playoffInfo = `<br>Round 1: BYE`;
+        playoffInfo = ` | Round 1: BYE`;
       }
     } else {
-      playoffInfo = `<br>Currently outside playoff position (top 16)`;
+      playoffInfo = ` | Outside playoffs (top 16)`;
     }
 
-    infoDiv.innerHTML = `<b>${tracked}</b><br>Rank: #${rank} of ${total} | ${teamData.w}-${teamData.l}-${teamData.t || teamData.otl} | ${teamData.pts} pts${playoffInfo}`;
+    infoDiv.innerHTML = `<b>#${rank} ${tracked}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts${playoffInfo}`;
     infoDiv.style.display = 'block';
   } else {
     infoDiv.style.display = 'none';
@@ -357,34 +258,17 @@ async function fetchLive() {
     if (d.ok && d.standings && d.standings.length > 0) {
       liveStandings = d.standings;
       liveTiebreakers = d.tiebreaker_log || [];
-      const seasonInfo = d.season ? ` (${d.season}/${parseInt(d.season)+1})` : '';
-      const rulesInfo = d.tiebreakers_applied ? ' ✓ Rules Applied' : '';
-      const gamesInfo = d.games_used ? ` (${d.games_used} games)` : '';
-      status.innerHTML = `<div class="msg success">IceJam U15 AAA${seasonInfo} - ${d.teams_found} teams${rulesInfo}${gamesInfo}</div>`;
 
-      // Populate team dropdown
+      const seasonInfo = d.season ? `${d.season}/${parseInt(d.season)+1}` : '';
+      const rulesInfo = d.tiebreakers_applied ? ' | Rules Applied' : '';
+      const gamesInfo = d.games_used ? ` | ${d.games_used} games` : '';
+
+      status.innerHTML = `<div class="msg success">${d.teams_found} teams | ${seasonInfo}${rulesInfo}${gamesInfo}</div>`;
+
       populateTeamDropdown(d.standings);
-
-      // Render table based on current view
       renderStandingsTable();
-
-      // Show tiebreaker work if any
-      if (liveTiebreakers.length > 0) {
-        let tbHtml = '<div style="margin-top:10px;"><details><summary style="cursor:pointer;color:#007bff;font-size:14px;">Show Tiebreaker Calculations (' + liveTiebreakers.length + ')</summary>';
-        tbHtml += '<div style="background:#f8f9fa;padding:10px;margin-top:5px;border-radius:5px;font-size:12px;">';
-        liveTiebreakers.forEach((tb, i) => {
-          tbHtml += `<div style="margin:3px 0;padding:3px;${tb.includes('TB1') ? 'color:#28a745;' : ''}${tb.includes('TIED') ? 'color:#dc3545;' : ''}">${i+1}. ${tb}</div>`;
-        });
-        tbHtml += '</div></details></div>';
-        result.innerHTML += tbHtml;
-      }
-    } else if (d.ok) {
-      status.innerHTML = `<div class="msg info">Connected to ${d.url}<br>Tables found: ${d.tables_found || 0}</div>`;
-      if (d.standings && d.standings.length === 0) {
-        result.innerHTML = '<div class="small">No standings data yet (tournament may not have started)</div>';
-      }
     } else {
-      status.innerHTML = `<div class="msg error">Could not connect: ${d.error || 'Unknown error'}</div>`;
+      status.innerHTML = `<div class="msg error">${d.error || 'No standings data found'}</div>`;
     }
   } catch (e) {
     status.innerHTML = `<div class="msg error">Network error: ${e.message}</div>`;
@@ -392,168 +276,38 @@ async function fetchLive() {
 }
 
 async function fetchSchedule() {
-  const status = document.getElementById("live-status");
   const result = document.getElementById("schedule-result");
-  // Use tracked team from live dropdown, fall back to my standings dropdown
-  const tracked = document.getElementById("track-team").value;
-  const team = tracked || document.getElementById("team").value;
+  const tracked = document.getElementById("track-team").value || "Eastern Hitmen";
 
-  status.innerHTML = '<div class="msg info">Fetching schedule...</div>';
+  result.innerHTML = '<div class="small">Loading schedule...</div>';
 
   try {
-    const r = await fetch(`/api/schedule?team=${encodeURIComponent(team)}`);
+    const r = await fetch(`/api/schedule?team=${encodeURIComponent(tracked)}`);
     const d = await r.json();
 
     if (d.ok && d.schedule && d.schedule.length > 0) {
-      status.innerHTML = `<div class="msg success">Found ${d.games_found} games for ${d.team}</div>`;
-
-      let html = '<table><thead><tr><th>#</th><th>Matchup</th><th>Date/Time</th><th>Rink</th></tr></thead><tbody>';
+      let html = `<div class="small" style="margin:10px 0;">${d.games_found} games for ${d.team}</div>`;
+      html += '<table><thead><tr><th>#</th><th>Matchup</th><th>Date/Time</th><th>Rink</th></tr></thead><tbody>';
       d.schedule.forEach((g, i) => {
-        const matchup = `${g.location} ${g.opponent}`;
         html += `<tr>
           <td>${g.game_num || (i+1)}</td>
-          <td><b>${matchup}</b></td>
+          <td><b>${g.location} ${g.opponent}</b></td>
           <td class="small">${g.date}<br>${g.time}</td>
           <td class="small">${g.rink || '-'}</td>
         </tr>`;
       });
       html += '</tbody></table>';
       result.innerHTML = html;
-    } else if (d.ok) {
-      status.innerHTML = `<div class="msg info">Connected to ${d.url}</div>`;
-      result.innerHTML = '<div class="small">No schedule found for ' + d.team + '</div>';
     } else {
-      status.innerHTML = `<div class="msg error">Could not connect: ${d.error || 'Unknown error'}</div>`;
+      result.innerHTML = `<div class="small" style="margin-top:10px;">No schedule found for ${tracked}</div>`;
     }
   } catch (e) {
-    status.innerHTML = `<div class="msg error">Network error: ${e.message}</div>`;
+    result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
   }
 }
 
-async function update() {
-  const rows = document.getElementById("rows");
-  const count = document.getElementById("games-count");
-
-  // Show loading state
-  rows.innerHTML = "<tr><td colspan='7' class='small'>Loading...</td></tr>";
-
-  try {
-    const team = document.getElementById("team").value;
-    const r = await fetch(`/api/standings?team=${encodeURIComponent(team)}`);
-
-    if (!r.ok) {
-      throw new Error(`Server error: ${r.status} ${r.statusText}`);
-    }
-
-    const d = await r.json();
-
-    count.textContent = d.games_count ? `(${d.games_count} games)` : '';
-    rows.innerHTML = "";
-
-    if (!d.standings || !d.standings.length) {
-      rows.innerHTML = "<tr><td colspan='7' class='small'>No games yet - add some!</td></tr>";
-      return;
-    }
-
-    d.standings.forEach(x => {
-      const tr = document.createElement("tr");
-      if (x.team.toLowerCase().includes("hitmen")) tr.className = "hitmen";
-      tr.innerHTML = `<td>${x.rank}</td><td>${x.team}</td><td>${x.gp}</td><td>${x.w}</td><td>${x.l}</td><td>${x.t}</td><td><b>${x.pts}</b></td>`;
-      rows.appendChild(tr);
-    });
-  } catch (e) {
-    console.error('Update standings error:', e);
-    rows.innerHTML = `<tr><td colspan='7' class='small' style='color:#f87171;'>Error: ${e.message}<br>Make sure the server is running (uvicorn app:app)</td></tr>`;
-    count.textContent = '';
-  }
-}
-
-async function addGame() {
-  const msg = document.getElementById("game-msg");
-  const team_a = document.getElementById("team_a").value;
-  const team_b = document.getElementById("team_b").value;
-  const goals_a = parseInt(document.getElementById("score_a").value) || 0;
-  const goals_b = parseInt(document.getElementById("score_b").value) || 0;
-  const ot = document.getElementById("ot").checked;
-  const pim_a = parseInt(document.getElementById("pim_a").value) || 0;
-  const pim_b = parseInt(document.getElementById("pim_b").value) || 0;
-  const first_goal_team = document.getElementById("first_goal_team").value;
-  const first_goal_time_sec = document.getElementById("first_goal_time").value ? parseInt(document.getElementById("first_goal_time").value) : null;
-
-  if (!team_a || !team_b) {
-    msg.innerHTML = '<div class="msg error">Select both teams</div>';
-    return;
-  }
-
-  if (team_a === team_b) {
-    msg.innerHTML = '<div class="msg error">Teams must be different</div>';
-    return;
-  }
-
-  const r = await fetch('/api/games', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ team_a, team_b, goals_a, goals_b, ot, pim_a, pim_b, first_goal_team, first_goal_time_sec })
-  });
-  const d = await r.json();
-
-  if (d.ok) {
-    msg.innerHTML = `<div class="msg success">Added: ${team_a} ${goals_a} - ${goals_b} ${team_b}</div>`;
-    document.getElementById("score_a").value = "";
-    document.getElementById("score_b").value = "";
-    document.getElementById("ot").checked = false;
-    document.getElementById("pim_a").value = "";
-    document.getElementById("pim_b").value = "";
-    document.getElementById("first_goal_team").value = "";
-    document.getElementById("first_goal_time").value = "";
-    update();
-  } else {
-    msg.innerHTML = '<div class="msg error">Error adding game</div>';
-  }
-}
-
-async function listGames() {
-  const r = await fetch('/api/games');
-  const d = await r.json();
-  const list = document.getElementById("games-list");
-
-  if (!d.games.length) {
-    list.innerHTML = '<div class="small" style="margin-top:10px">No games added yet</div>';
-    return;
-  }
-
-  let html = '<table style="margin-top:10px"><tr><th>Game</th><th>Score</th><th>Extra</th><th></th></tr>';
-  d.games.forEach(g => {
-    const otTag = g.ot ? ' (OT)' : '';
-    const pimInfo = (g.pim_a || g.pim_b) ? `PIM:${g.pim_a}/${g.pim_b}` : '';
-    const fgInfo = g.first_goal_team ? `1st:${g.first_goal_team.toUpperCase()}` : '';
-    const extra = [pimInfo, fgInfo].filter(x => x).join(' ') || '-';
-    html += `<tr>
-      <td class="small">${g.team_a} vs ${g.team_b}</td>
-      <td>${g.goals_a}-${g.goals_b}${otTag}</td>
-      <td class="small">${extra}</td>
-      <td><span style="color:#dc3545;cursor:pointer" onclick="deleteGame('${g.game_id}')">X</span></td>
-    </tr>`;
-  });
-  html += '</table>';
-  list.innerHTML = html;
-}
-
-async function deleteGame(id) {
-  await fetch(`/api/games/${id}`, { method: 'DELETE' });
-  listGames();
-  update();
-}
-
-async function clearGames() {
-  if (!confirm('Clear all games?')) return;
-  await fetch('/api/games', { method: 'DELETE' });
-  document.getElementById("games-list").innerHTML = '';
-  update();
-}
-
-// Auto-load standings on page load
-update();
+// Auto-fetch live standings on page load
+fetchLive();
 </script>
 </body>
 </html>

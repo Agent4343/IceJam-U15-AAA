@@ -838,6 +838,77 @@ def scrape():
     return scrape_icejam()
 
 
+@app.get("/api/playoff-bracket")
+def playoff_bracket():
+    """Generate playoff bracket based on scraped standings."""
+    standings_result = scrape_icejam()
+
+    if not standings_result.get("ok") or not standings_result.get("standings"):
+        return {
+            "ok": False,
+            "error": "Could not fetch standings",
+            "bracket": []
+        }
+
+    standings = standings_result["standings"]
+    teams_count = len(standings)
+
+    # Standard 16-team bracket (1v16, 2v15, 3v14, etc.)
+    # If fewer than 16 teams, some get byes
+    bracket = []
+    matchup_pairs = [
+        (1, 16, "P01"),
+        (2, 15, "P02"),
+        (3, 14, "P03"),
+        (4, 13, "P04"),
+        (5, 12, "P05"),
+        (6, 11, "P06"),
+        (7, 10, "P07"),
+        (8, 9, "P08"),
+    ]
+
+    for high_seed, low_seed, game_id in matchup_pairs:
+        high_team = standings[high_seed - 1] if high_seed <= teams_count else None
+        low_team = standings[low_seed - 1] if low_seed <= teams_count else None
+
+        if high_team and low_team:
+            bracket.append({
+                "game": game_id,
+                "high_seed": {
+                    "rank": high_seed,
+                    "team": high_team["team"],
+                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
+                    "pts": high_team["pts"]
+                },
+                "low_seed": {
+                    "rank": low_seed,
+                    "team": low_team["team"],
+                    "record": f"{low_team['w']}-{low_team['l']}-{low_team['t']}",
+                    "pts": low_team["pts"]
+                },
+                "matchup": f"#{high_seed} {high_team['team']} vs #{low_seed} {low_team['team']}"
+            })
+        elif high_team:
+            bracket.append({
+                "game": game_id,
+                "high_seed": {
+                    "rank": high_seed,
+                    "team": high_team["team"],
+                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
+                    "pts": high_team["pts"]
+                },
+                "low_seed": None,
+                "matchup": f"#{high_seed} {high_team['team']} - BYE"
+            })
+
+    return {
+        "ok": True,
+        "teams_count": teams_count,
+        "bracket": bracket,
+        "standings_url": STANDINGS_URL
+    }
+
+
 @app.get("/api/schedule")
 def schedule(team: str = Query(DEFAULT_TEAM)):
     """Scrape schedule from icejam.ca/schedule/"""

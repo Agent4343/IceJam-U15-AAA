@@ -65,6 +65,10 @@ th { color:#9fb0cf; font-weight:500; }
   <!-- Live Data Card -->
   <div class="card">
     <div class="card-title">Live from IceJam.ca <span class="live-badge">LIVE</span></div>
+    <select id="track-team" onchange="highlightTracked()">
+      <option value="">-- Select Team to Track --</option>
+    </select>
+    <div id="tracked-info" class="msg info" style="display:none;"></div>
     <div class="row">
       <button class="live" onclick="fetchLive()">Fetch Standings</button>
       <button class="live" onclick="fetchSchedule()">Fetch Schedule</button>
@@ -172,11 +176,89 @@ th { color:#9fb0cf; font-weight:500; }
 </div>
 
 <script>
+// Store fetched standings for team selection
+let liveStandings = [];
+
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   event.target.classList.add('active');
   document.getElementById(name + '-panel').classList.add('active');
+}
+
+function populateTeamDropdown(standings) {
+  const select = document.getElementById("track-team");
+  const currentValue = select.value;
+
+  // Clear existing options except first
+  select.innerHTML = '<option value="">-- Select Team to Track --</option>';
+
+  standings.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.team;
+    opt.textContent = t.team;
+    select.appendChild(opt);
+  });
+
+  // Restore selection if still valid
+  if (currentValue && standings.some(t => t.team === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function highlightTracked() {
+  const tracked = document.getElementById("track-team").value;
+  const infoDiv = document.getElementById("tracked-info");
+
+  // Remove all highlights
+  document.querySelectorAll('#live-result tr').forEach(tr => {
+    tr.classList.remove('hitmen');
+  });
+
+  if (!tracked || !liveStandings.length) {
+    infoDiv.style.display = 'none';
+    return;
+  }
+
+  // Find and highlight tracked team
+  let teamData = null;
+  let rank = 0;
+  liveStandings.forEach((t, i) => {
+    if (t.team === tracked) {
+      teamData = t;
+      rank = i + 1;
+    }
+  });
+
+  if (teamData) {
+    // Highlight row in table
+    document.querySelectorAll('#live-result tr').forEach(tr => {
+      if (tr.textContent.includes(tracked)) {
+        tr.classList.add('hitmen');
+      }
+    });
+
+    // Show team info
+    const total = liveStandings.length;
+    let playoffInfo = '';
+    if (rank <= 16) {
+      // Calculate playoff opponent
+      const opponentRank = 17 - rank;
+      if (opponentRank <= total) {
+        const opponent = liveStandings[opponentRank - 1];
+        playoffInfo = `<br>Round 1: #${rank} vs #${opponentRank} ${opponent.team}`;
+      } else {
+        playoffInfo = `<br>Round 1: BYE`;
+      }
+    } else {
+      playoffInfo = `<br>Currently outside playoff position (top 16)`;
+    }
+
+    infoDiv.innerHTML = `<b>${tracked}</b><br>Rank: #${rank} of ${total} | ${teamData.w}-${teamData.l}-${teamData.t || teamData.otl} | ${teamData.pts} pts${playoffInfo}`;
+    infoDiv.style.display = 'block';
+  } else {
+    infoDiv.style.display = 'none';
+  }
 }
 
 async function fetchLive() {
@@ -191,12 +273,15 @@ async function fetchLive() {
     const d = await r.json();
 
     if (d.ok && d.standings && d.standings.length > 0) {
+      liveStandings = d.standings;
       status.innerHTML = `<div class="msg success">Connected! Found ${d.teams_found} teams</div>`;
+
+      // Populate team dropdown
+      populateTeamDropdown(d.standings);
 
       let html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>OTL</th><th>PTS</th><th>GF</th><th>GA</th></tr></thead><tbody>';
       d.standings.forEach((t, i) => {
-        const isHitmen = t.team.toLowerCase().includes('hitmen');
-        html += `<tr class="${isHitmen ? 'hitmen' : ''}">
+        html += `<tr data-team="${t.team}">
           <td>${i+1}</td>
           <td>${t.team}</td>
           <td>${t.gp}</td>
@@ -210,6 +295,9 @@ async function fetchLive() {
       });
       html += '</tbody></table>';
       result.innerHTML = html;
+
+      // Re-apply highlight if team was selected
+      highlightTracked();
     } else if (d.ok) {
       status.innerHTML = `<div class="msg info">Connected to ${d.url}<br>Tables found: ${d.tables_found || 0}</div>`;
       if (d.standings && d.standings.length === 0) {
@@ -226,7 +314,9 @@ async function fetchLive() {
 async function fetchSchedule() {
   const status = document.getElementById("live-status");
   const result = document.getElementById("schedule-result");
-  const team = document.getElementById("team").value;
+  // Use tracked team from live dropdown, fall back to my standings dropdown
+  const tracked = document.getElementById("track-team").value;
+  const team = tracked || document.getElementById("team").value;
 
   status.innerHTML = '<div class="msg info">Fetching schedule...</div>';
 

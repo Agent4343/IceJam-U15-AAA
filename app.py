@@ -23,7 +23,7 @@ BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
-DEFAULT_LEAGUE = "500239"  # IceJam U15 league ID (found from site)
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (found from jsonSLeague)
 
 # All 26 teams from IceJam U15 AAA 2026
 TEAMS = [

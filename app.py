@@ -549,6 +549,53 @@ def scrape_icejam() -> Dict:
                     except json_lib.JSONDecodeError:
                         continue
 
+        # Fallback: Try HTML table parsing if no JSON found
+        if not standings_data:
+            logger.info("No JSON data found, trying HTML table parsing")
+            soup = BeautifulSoup(html, "html.parser")
+            tables = soup.find_all("table")
+            logger.info(f"Found {len(tables)} HTML tables")
+
+            for table in tables:
+                rows = table.find_all("tr")
+                for row in rows[1:]:  # Skip header row
+                    cells = row.find_all(["td", "th"])
+                    if len(cells) >= 5:
+                        # Try to extract team name from first cell
+                        team_cell = cells[0].get_text(strip=True)
+                        if not team_cell or team_cell.upper() in ["TEAM", "RANK", "#", ""]:
+                            continue
+
+                        # Try to parse numeric values from remaining cells
+                        try:
+                            # Common formats: Team, GP, W, L, T/OTL, PTS, GF, GA
+                            # Or: Rank, Team, GP, W, L, OTL, PTS, GF, GA
+                            numeric_cells = []
+                            for cell in cells[1:]:
+                                try:
+                                    numeric_cells.append(int(cell.get_text(strip=True) or 0))
+                                except ValueError:
+                                    numeric_cells.append(0)
+
+                            if len(numeric_cells) >= 4:
+                                standings_data.append({
+                                    "team": team_cell,
+                                    "gp": numeric_cells[0] if len(numeric_cells) > 0 else 0,
+                                    "w": numeric_cells[1] if len(numeric_cells) > 1 else 0,
+                                    "l": numeric_cells[2] if len(numeric_cells) > 2 else 0,
+                                    "t": 0,
+                                    "otl": numeric_cells[3] if len(numeric_cells) > 3 else 0,
+                                    "pts": numeric_cells[4] if len(numeric_cells) > 4 else 0,
+                                    "gf": numeric_cells[5] if len(numeric_cells) > 5 else 0,
+                                    "ga": numeric_cells[6] if len(numeric_cells) > 6 else 0,
+                                })
+                        except (ValueError, IndexError) as e:
+                            logger.warning(f"Could not parse row: {e}")
+                            continue
+
+                if standings_data:
+                    break  # Found data in this table
+
         # Sort by points (descending) then by goal differential
         standings_data.sort(key=lambda x: (x["pts"], x["gf"] - x["ga"]), reverse=True)
 

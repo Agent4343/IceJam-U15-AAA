@@ -28,11 +28,6 @@ DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000
 
-# IceJam U15 AAA teams (will be populated from live standings)
-TEAMS = [
-    "Eastern Hitmen",
-]
-
 # Browser headers to avoid being blocked (no Accept-Encoding to get plain text)
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -996,7 +991,7 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
 def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "default_team": DEFAULT_TEAM, "teams": TEAMS}
+        {"request": request, "default_team": DEFAULT_TEAM}
     )
 
 
@@ -1009,12 +1004,6 @@ def rules(request: Request):
 
 
 # ============ API ROUTES ============
-
-@app.get("/api/teams")
-def get_teams():
-    """Get list of all teams."""
-    return {"ok": True, "teams": TEAMS}
-
 
 @app.get("/api/standings")
 def standings(team: str = Query(DEFAULT_TEAM)):

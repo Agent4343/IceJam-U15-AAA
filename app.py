@@ -1,7 +1,7 @@
 from __future__ import annotations
+import json as json_lib
 import re
 import uuid
-import random
 import logging
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
@@ -13,7 +13,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +24,9 @@ STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
 DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
+
+# Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
+TOURNAMENT_TIME_MULTIPLIER = 100000
 
 # IceJam U15 AAA teams (will be populated from live standings)
 TEAMS = [
@@ -80,15 +83,22 @@ class TeamStats:
 
 
 class GameInput(BaseModel):
-    team_a: str
-    team_b: str
-    goals_a: int
-    goals_b: int
+    team_a: str = Field(..., min_length=1, max_length=100, description="Home team name")
+    team_b: str = Field(..., min_length=1, max_length=100, description="Away team name")
+    goals_a: int = Field(..., ge=0, le=100, description="Goals scored by team A")
+    goals_b: int = Field(..., ge=0, le=100, description="Goals scored by team B")
     ot: bool = False
-    pim_a: int = 0
-    pim_b: int = 0
-    first_goal_team: str = ""  # "a" or "b" or team name
-    first_goal_time_sec: Optional[int] = None
+    pim_a: int = Field(default=0, ge=0, le=500, description="Penalty minutes for team A")
+    pim_b: int = Field(default=0, ge=0, le=500, description="Penalty minutes for team B")
+    first_goal_team: str = Field(default="", max_length=100, description="'a' or 'b' or team name")
+    first_goal_time_sec: Optional[int] = Field(default=None, ge=0, le=3600, description="Time in seconds when first goal was scored")
+
+    @field_validator('team_b')
+    @classmethod
+    def teams_must_be_different(cls, v, info):
+        if 'team_a' in info.data and v.strip().lower() == info.data['team_a'].strip().lower():
+            raise ValueError('team_a and team_b must be different teams')
+        return v
 
 
 app = FastAPI()
@@ -108,10 +118,10 @@ def points_for_game(gf: int, ga: int, ot: bool) -> Tuple[int, int, int, int, int
     return (1, 0, 1, 0, 0, 1) if ot else (0, 0, 1, 0, 0, 0)
 
 
-def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[int, int, int, str, str]:
+def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[int, int, int, str]:
     """
     Get head-to-head record between two teams.
-    Returns (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_team)
+    Returns (team1_pts, team2_pts, games_played, first_goal_winner)
     """
     team1_pts = 0
     team2_pts = 0
@@ -146,7 +156,7 @@ def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[in
                     elif game.first_goal_team.lower() == "b" or game.first_goal_team == team1:
                         first_goal_winner = team1
 
-    return (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_winner)
+    return (team1_pts, team2_pts, games_played, first_goal_winner)
 
 
 def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> int:
@@ -160,7 +170,7 @@ def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> i
 
     # Tiebreaker 1: Head-to-head
     h2h = get_head_to_head(t1.name, t2.name, games)
-    t1_h2h_pts, t2_h2h_pts, games_played, first_goal_winner, _ = h2h
+    t1_h2h_pts, t2_h2h_pts, games_played, first_goal_winner = h2h
     if games_played > 0 and t1_h2h_pts != t2_h2h_pts:
         return -1 if t1_h2h_pts > t2_h2h_pts else 1
 
@@ -199,8 +209,9 @@ def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> i
     if t1_first != t2_first:
         return -1 if t1_first < t2_first else 1
 
-    # Tiebreaker 9: Coin toss (random)
-    return random.choice([-1, 1])
+    # Tiebreaker 9: Alphabetical order (deterministic fallback for coin toss)
+    # Note: In actual tournament, this would be a coin toss. Using alphabetical for consistent results.
+    return -1 if t1.name.lower() < t2.name.lower() else 1
 
 
 def get_record_among_tied(teams: List[TeamStats], games: Dict[str, Game]) -> Dict[str, int]:
@@ -321,8 +332,8 @@ def sort_tied_group(teams: List[TeamStats], games: Dict[str, Game]) -> List[Team
         if t1_first != t2_first:
             return -1 if t1_first < t2_first else 1
 
-        # Step 8: Coin toss
-        return random.choice([-1, 1])
+        # Step 8: Alphabetical order (deterministic fallback for coin toss)
+        return -1 if t1.name.lower() < t2.name.lower() else 1
 
     return sorted(teams, key=cmp_to_key(compare_multi))
 
@@ -382,8 +393,8 @@ def calculate_standings() -> List[dict]:
 
         # Track first goal of tournament for each team
         if game.first_goal_team and game.first_goal_time_sec is not None:
-            # Calculate tournament time (game_number * large number + seconds)
-            tournament_time = game.game_number * 100000 + game.first_goal_time_sec
+            # Calculate tournament time (game_number * multiplier + seconds)
+            tournament_time = game.game_number * TOURNAMENT_TIME_MULTIPLIER + game.first_goal_time_sec
 
             first_goal_team_name = ""
             if game.first_goal_team.lower() == "a":
@@ -458,8 +469,6 @@ def calculate_standings() -> List[dict]:
 def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings data from icejam.ca using their API"""
     try:
-        import json as json_lib
-
         # Use provided league_id or default to IceJam U15
         lg = league_id or DEFAULT_LEAGUE
 
@@ -540,7 +549,6 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
 def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
-        import json as json_lib
         lg = league_id or DEFAULT_LEAGUE
 
         # Fetch scores from the scores page
@@ -743,8 +751,6 @@ def scrape_icejam_html(league_id: str = None) -> Dict:
         html = response.text
         standings_data = []
 
-        import json as json_lib
-
         # Try to extract jsonSt variable (RYNA Hockey format)
         # Structure: jsonSt = [{"jsonStandings": [{team1}, {team2}, ...]}]
         jsonst_start = html.find('let jsonSt = [')
@@ -920,7 +926,6 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
         schedule_data = []
 
         # Extract the json = [...] JavaScript variable
-        import json as json_lib
         json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
 
         if json_match:
@@ -1224,7 +1229,6 @@ def debug_standings():
         response.raise_for_status()
 
         html = response.text
-        import json as json_lib
 
         # Try multiple regex patterns to find JSON data
         patterns_tried = []
@@ -1333,7 +1337,6 @@ def debug_leagues():
         response.raise_for_status()
 
         html = response.text
-        import json as json_lib
 
         # Look for jsonSLeague variable - try multiple formats
         leagues_info = []

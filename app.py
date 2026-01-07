@@ -1,3 +1,24 @@
+"""
+IceJam U15 AAA Standings Tracker
+
+This app automatically tracks round robin standings for the IceJam U15 AAA tournament.
+All round robin logic is automated - standings are scraped from icejam.ca and tiebreaker
+rules are applied automatically to determine rankings.
+
+TIEBREAKER LIMITATIONS:
+    The following tiebreakers ARE implemented automatically:
+        TB1: Head-to-head record
+        TB2: Most wins
+        TB3: Goal average (GF / (GF + GA))
+        TB4: Fewest goals against
+        TB5: Most goals for
+        TB6: Fewest penalty minutes
+        TB9: Alphabetical order (deterministic fallback for coin toss)
+
+    The following tiebreakers CANNOT be determined (data not available from icejam.ca):
+        TB7: First goal in head-to-head game (requires play-by-play data)
+        TB8: Fastest first goal of tournament (requires play-by-play data)
+"""
 from __future__ import annotations
 import json as json_lib
 import re

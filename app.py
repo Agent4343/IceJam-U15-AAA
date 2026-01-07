@@ -603,15 +603,15 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
     Uses the 9-step tiebreaker formula from the rules.
     Returns (sorted_standings, tiebreaker_log) with details of calculations.
     """
-    if not standings or not games:
+    if not standings:
         return standings, []
 
     tiebreaker_log = []  # Log of tiebreaker decisions
 
-    # Build head-to-head record
+    # Build head-to-head record (empty if no games provided)
     h2h = {}  # {(team1, team2): {team1: pts, team2: pts}}
 
-    for game in games:
+    for game in (games or []):
         home = game["home"]
         away = game["away"]
         home_score = game["home_score"]

@@ -600,8 +600,21 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
 def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     """
     Apply tournament tiebreaker rules to live standings data.
-    Uses the 9-step tiebreaker formula from the rules.
     Returns (sorted_standings, tiebreaker_log) with details of calculations.
+
+    LIMITATION: Not all tiebreakers can be applied with scraped data.
+    The following tiebreakers ARE implemented:
+        TB1: Head-to-head record (when game scores available)
+        TB2: Most wins
+        TB3: Goal average (GF / (GF + GA))
+        TB4: Fewest goals against
+        TB5: Most goals for
+        TB6: Fewest penalty minutes
+        TB9: Alphabetical order (deterministic fallback for coin toss)
+
+    The following tiebreakers CANNOT be implemented (data not available):
+        TB7: First goal in head-to-head game (requires play-by-play data)
+        TB8: Fastest first goal of tournament (requires play-by-play data)
     """
     if not standings:
         return standings, []

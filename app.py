@@ -686,9 +686,10 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
             reason = f"TB6 Fewest PIM: {t1['team']} ({t1_pim} PIM) vs {t2['team']} ({t2_pim} PIM)"
             return (-1 if t1_pim < t2_pim else 1, reason)
 
-        # Still tied after all tiebreakers
-        reason = f"TIED: {t1['team']} vs {t2['team']} (need TB7-9: first goal h2h, fastest goal, coin toss)"
-        return (0, reason)
+        # TB7-8: First goal data not available from scraped standings
+        # TB9: Alphabetical order (deterministic fallback for coin toss)
+        reason = f"TB9 Alphabetical: {t1['team']} vs {t2['team']} (TB7-8 require first goal data not available)"
+        return (-1 if t1["team"].lower() < t2["team"].lower() else 1, reason)
 
     def compare_teams(t1: Dict, t2: Dict) -> int:
         result, reason = compare_teams_with_log(t1, t2)

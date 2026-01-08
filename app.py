@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
-DEFAULT_TEAM = "Eastern Hitman"
-DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitman's league)
+DEFAULT_TEAM = "Eastern Hitmen"
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000

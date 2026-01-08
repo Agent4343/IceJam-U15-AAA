@@ -581,7 +581,7 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
         if json_match:
             try:
                 games_json = json_lib.loads(json_match.group(1))
-                logger.info(f"Found {len(games_json)} games in scores JSON")
+                logger.info(f"Found {len(games_json)} total games in scores JSON")
 
                 for game in games_json:
                     # Filter by league
@@ -595,7 +595,7 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
                     away_score = int(game.get("vf", 0) or 0)
                     game_status = game.get("gs", "")  # Game status
 
-                    # Only include completed games
+                    # Only include completed games (status F, Final, or empty for completed)
                     if home_team and away_team and game_status in ["F", "Final", "final", ""]:
                         games.append({
                             "home": home_team,
@@ -605,8 +605,12 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
                             "ot": "OT" in str(game.get("gp", "")),
                             "game_num": game.get("gn", ""),
                         })
+
+                logger.info(f"Filtered to {len(games)} completed games for league {lg}")
             except json_lib.JSONDecodeError as e:
                 logger.error(f"JSON parse error in scores: {e}")
+        else:
+            logger.warning(f"No json variable found in scores page HTML")
 
         return {
             "ok": True,

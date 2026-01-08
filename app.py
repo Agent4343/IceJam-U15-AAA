@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
-DEFAULT_TEAM = "Eastern Hitmen"
-DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
+DEFAULT_TEAM = "Eastern Hitman"
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitman's league)
 
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000
@@ -966,9 +966,9 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
                 # Filter for games containing the tracked team
                 team_lower = team.lower()
                 search_terms = [team_lower]
-                # Also search for short name like "Hitmen"
-                if "hitmen" in team_lower:
-                    search_terms.append("hitmen")
+                # Also search for short name like "Hitman"
+                if "hitman" in team_lower:
+                    search_terms.append("hitman")
 
                 for game in games_json:
                     home = (game.get("h_n") or "").lower()

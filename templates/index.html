@@ -183,7 +183,7 @@ function populateTeamDropdown(standings) {
     const opt = document.createElement("option");
     opt.value = t.team;
     opt.textContent = t.team;
-    if (t.team.toLowerCase().includes('hitman')) {
+    if (t.team.toLowerCase().includes('hitman') || t.team.toLowerCase().includes('hitmen')) {
       opt.selected = true;
     }
     select.appendChild(opt);

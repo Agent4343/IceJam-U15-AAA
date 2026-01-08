@@ -966,9 +966,9 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
                 # Filter for games containing the tracked team
                 team_lower = team.lower()
                 search_terms = [team_lower]
-                # Also search for short name like "Hitman"
-                if "hitman" in team_lower:
-                    search_terms.append("hitman")
+                # Also search for short name variations (Hitman/Hitmen)
+                if "hitman" in team_lower or "hitmen" in team_lower:
+                    search_terms.extend(["hitman", "hitmen"])
 
                 for game in games_json:
                     home = (game.get("h_n") or "").lower()

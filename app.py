@@ -945,11 +945,13 @@ def scrape_icejam_html(league_id: str = None) -> Dict:
         }
 
 
-def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
+def scrape_schedule(team: str = DEFAULT_TEAM, league_id: str = None) -> Dict:
     """Scrape schedule data from icejam.ca/schedule/"""
     try:
-        logger.info(f"Fetching {SCHEDULE_URL}")
-        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        lg = league_id or DEFAULT_LEAGUE
+        url = f"{SCHEDULE_URL}?lg={lg}"
+        logger.info(f"Fetching {url}")
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
         html = response.text
@@ -1004,7 +1006,8 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
 
         return {
             "ok": True,
-            "url": SCHEDULE_URL,
+            "url": url,
+            "league_id": lg,
             "team": team,
             "games_found": len(schedule_data),
             "schedule": schedule_data
@@ -1015,7 +1018,7 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
         return {
             "ok": False,
             "error": str(e),
-            "url": SCHEDULE_URL
+            "url": url if 'url' in locals() else SCHEDULE_URL
         }
 
 

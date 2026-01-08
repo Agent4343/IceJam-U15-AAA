@@ -576,41 +576,67 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
         html = response.text
         games = []
 
-        # Try to extract json variable with game data (handles var/let/const json = [...])
-        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Try to extract json variable with game data
+        # Use greedy match and look for ]]; or ]; at end to handle nested structures
+        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)', html)
+
+        if not json_match:
+            # Try alternate pattern - greedy match up to ]];
+            json_match = re.search(r'json\s*=\s*(\[.*\]);', html, re.DOTALL)
+
         if json_match:
             try:
-                games_json = json_lib.loads(json_match.group(1))
+                json_str = json_match.group(1)
+                # Clean up any trailing content after the array
+                bracket_count = 0
+                end_pos = 0
+                for i, char in enumerate(json_str):
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            end_pos = i + 1
+                            break
+                if end_pos > 0:
+                    json_str = json_str[:end_pos]
+
+                games_json = json_lib.loads(json_str)
                 logger.info(f"Found {len(games_json)} total games in scores JSON")
 
                 for game in games_json:
-                    # Filter by league
-                    game_league = str(game.get("lg", ""))
-                    if game_league != lg:
+                    # Filter by league (try multiple field names)
+                    game_league = str(game.get("lg", game.get("league", "")))
+
+                    # Include game if league matches OR if no league filter in data
+                    if game_league and game_league != lg:
                         continue
 
-                    home_team = game.get("h_n", "")
-                    away_team = game.get("v_n", "")
-                    home_score = int(game.get("hf", 0) or 0)
-                    away_score = int(game.get("vf", 0) or 0)
-                    game_status = game.get("gs", "")  # Game status
+                    home_team = game.get("h_n", game.get("home", ""))
+                    away_team = game.get("v_n", game.get("away", ""))
+                    home_score = int(game.get("hf", game.get("home_score", 0)) or 0)
+                    away_score = int(game.get("vf", game.get("away_score", 0)) or 0)
+                    game_status = str(game.get("gs", game.get("status", ""))).upper()
 
-                    # Only include completed games (status F, Final, or empty for completed)
-                    if home_team and away_team and game_status in ["F", "Final", "final", ""]:
+                    # Include completed games (F, Final) or games with scores
+                    is_completed = game_status in ["F", "FINAL", ""] or (home_score > 0 or away_score > 0)
+
+                    if home_team and away_team and is_completed:
                         games.append({
                             "home": home_team,
                             "away": away_team,
                             "home_score": home_score,
                             "away_score": away_score,
-                            "ot": "OT" in str(game.get("gp", "")),
-                            "game_num": game.get("gn", ""),
+                            "ot": "OT" in str(game.get("gp", game.get("period", ""))),
+                            "game_num": game.get("gn", game.get("game_num", "")),
                         })
 
                 logger.info(f"Filtered to {len(games)} completed games for league {lg}")
             except json_lib.JSONDecodeError as e:
                 logger.error(f"JSON parse error in scores: {e}")
+                logger.error(f"JSON string preview: {json_str[:500] if 'json_str' in locals() else 'N/A'}")
         else:
-            logger.warning(f"No json variable found in scores page HTML")
+            logger.warning(f"No json variable found in scores page HTML (length: {len(html)})")
 
         return {
             "ok": True,

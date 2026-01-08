@@ -24,11 +24,13 @@ import json as json_lib
 import re
 import uuid
 import logging
+import os
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
 from functools import cmp_to_key
 
 import requests
+import anthropic
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
@@ -1575,4 +1577,126 @@ def debug_leagues():
             "icejam_context": icejam_context[:10]
         }
     except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ AI ANALYSIS ============
+
+@app.get("/api/ai-analysis")
+def ai_analysis(
+    team: str = Query(DEFAULT_TEAM, description="Team to analyze"),
+    league: str = Query(None, description="League ID"),
+    season: str = Query("2025", description="Season year")
+):
+    """
+    Get AI-powered analysis of a team's standings and playoff situation.
+    Requires ANTHROPIC_API_KEY environment variable to be set.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {
+            "ok": False,
+            "error": "ANTHROPIC_API_KEY not configured. Set this environment variable in Railway."
+        }
+
+    try:
+        # Get current standings with tiebreakers
+        standings_result = scrape_icejam_with_tiebreakers(league, season)
+        if not standings_result.get("ok"):
+            return {"ok": False, "error": "Could not fetch standings"}
+
+        standings = standings_result.get("standings", [])
+        tiebreakers = standings_result.get("tiebreaker_log", [])
+
+        # Find the tracked team
+        team_data = None
+        team_rank = None
+        for i, t in enumerate(standings):
+            if team.lower() in t["team"].lower():
+                team_data = t
+                team_rank = i + 1
+                break
+
+        if not team_data:
+            return {"ok": False, "error": f"Team '{team}' not found in standings"}
+
+        # Get schedule for the team
+        schedule_result = scrape_schedule(team, league)
+        upcoming_games = schedule_result.get("schedule", [])[:5] if schedule_result.get("ok") else []
+
+        # Get recent scores
+        scores_result = fetch_game_scores(league, season)
+        team_scores = []
+        if scores_result.get("ok"):
+            for game in scores_result.get("games", []):
+                if team.lower() in game["home"].lower() or team.lower() in game["away"].lower():
+                    team_scores.append(game)
+
+        # Build context for Claude
+        total_teams = len(standings)
+        playoff_cutoff = min(16, total_teams)
+        in_playoff_position = team_rank <= playoff_cutoff
+
+        # Get nearby teams in standings
+        nearby_teams = []
+        for i in range(max(0, team_rank - 3), min(total_teams, team_rank + 2)):
+            t = standings[i]
+            nearby_teams.append(f"#{i+1} {t['team']}: {t['w']}-{t['l']}-{t['t']} ({t['pts']} pts)")
+
+        # Build the prompt
+        prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
+
+Current Standings:
+- {team} is ranked #{team_rank} of {total_teams} teams
+- Record: {team_data['w']} wins, {team_data['l']} losses, {team_data['t']} ties ({team_data['pts']} points)
+- Goals: {team_data['gf']} for, {team_data['ga']} against
+- Playoff position: {"IN (Top 16 qualify)" if in_playoff_position else f"OUT (need to climb {team_rank - playoff_cutoff} spots)"}
+
+Nearby Teams:
+{chr(10).join(nearby_teams)}
+
+Recent Games:
+{chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]]) if team_scores else "No completed games yet"}
+
+Upcoming Games:
+{chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
+
+Tiebreaker Notes:
+{chr(10).join(tiebreakers[:5]) if tiebreakers else "No tiebreakers applied yet"}
+
+Provide a brief (3-4 sentences) fan-friendly analysis covering:
+1. Current playoff position
+2. Recent performance
+3. What to watch for in upcoming games
+
+Keep it conversational and encouraging. Use hockey terminology appropriately."""
+
+        # Call Claude API
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=300,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        analysis = message.content[0].text
+
+        return {
+            "ok": True,
+            "team": team_data["team"],
+            "rank": team_rank,
+            "total_teams": total_teams,
+            "in_playoffs": in_playoff_position,
+            "record": f"{team_data['w']}-{team_data['l']}-{team_data['t']}",
+            "points": team_data["pts"],
+            "analysis": analysis
+        }
+
+    except anthropic.APIError as e:
+        logger.error(f"Anthropic API error: {e}")
+        return {"ok": False, "error": f"AI service error: {str(e)}"}
+    except Exception as e:
+        logger.error(f"AI analysis error: {e}")
         return {"ok": False, "error": str(e)}

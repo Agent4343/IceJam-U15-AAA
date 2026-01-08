@@ -87,6 +87,15 @@ th { color:#9fb0cf; font-weight:500; }
       <div class="small" style="margin-top:10px;">Tap button to load schedule</div>
     </div>
   </div>
+
+  <!-- Scores -->
+  <div class="card">
+    <div class="card-title">Game Scores</div>
+    <button onclick="fetchScores()">Fetch Scores</button>
+    <div id="scores-result">
+      <div class="small" style="margin-top:10px;">Tap button to load game scores</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -290,6 +299,57 @@ async function fetchSchedule() {
       result.innerHTML = html;
     } else {
       result.innerHTML = `<div class="small" style="margin-top:10px;">No schedule found for ${tracked}</div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
+}
+
+async function fetchScores() {
+  const result = document.getElementById("scores-result");
+  const tracked = document.getElementById("track-team").value || "Eastern Hitmen";
+
+  result.innerHTML = '<div class="small">Loading scores...</div>';
+
+  try {
+    const r = await fetch('/api/scores');
+    const d = await r.json();
+
+    if (d.ok && d.games && d.games.length > 0) {
+      // Filter for tracked team's games
+      const teamLower = tracked.toLowerCase();
+      const teamGames = d.games.filter(g =>
+        g.home.toLowerCase().includes(teamLower) ||
+        g.away.toLowerCase().includes(teamLower) ||
+        (teamLower.includes('hitmen') && (g.home.toLowerCase().includes('hitmen') || g.away.toLowerCase().includes('hitmen'))) ||
+        (teamLower.includes('hitman') && (g.home.toLowerCase().includes('hitman') || g.away.toLowerCase().includes('hitman')))
+      );
+
+      if (teamGames.length > 0) {
+        let html = `<div class="small" style="margin:10px 0;">${teamGames.length} game(s) for ${tracked}</div>`;
+        html += '<table><thead><tr><th>#</th><th>Matchup</th><th>Score</th></tr></thead><tbody>';
+        teamGames.forEach((g, i) => {
+          const isHome = g.home.toLowerCase().includes(teamLower) ||
+                        (teamLower.includes('hitmen') && g.home.toLowerCase().includes('hitmen')) ||
+                        (teamLower.includes('hitman') && g.home.toLowerCase().includes('hitman'));
+          const won = isHome ? g.home_score > g.away_score : g.away_score > g.home_score;
+          const resultClass = won ? 'color:#4ade80;' : (g.home_score === g.away_score ? 'color:#fbbf24;' : 'color:#f87171;');
+          const resultText = won ? 'W' : (g.home_score === g.away_score ? 'T' : 'L');
+          const otText = g.ot ? ' (OT)' : '';
+
+          html += `<tr>
+            <td>${g.game_num || (i+1)}</td>
+            <td>${isHome ? 'vs' : '@'} <b>${isHome ? g.away : g.home}</b></td>
+            <td style="${resultClass}"><b>${resultText}</b> ${g.home_score}-${g.away_score}${otText}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        result.innerHTML = html;
+      } else {
+        result.innerHTML = `<div class="small" style="margin-top:10px;">No completed games found for ${tracked}</div>`;
+      }
+    } else {
+      result.innerHTML = '<div class="small" style="margin-top:10px;">No scores available yet</div>';
     }
   } catch (e) {
     result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;

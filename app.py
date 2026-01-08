@@ -567,8 +567,8 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
     try:
         lg = league_id or DEFAULT_LEAGUE
 
-        # Fetch scores from the scores page
-        scores_url = f"{BASE}/scores/"
+        # Fetch scores from the scores page with league filter
+        scores_url = f"{BASE}/scores/?lg={lg}"
         logger.info(f"Fetching scores from {scores_url}")
         response = requests.get(scores_url, headers=HEADERS, timeout=10)
         response.raise_for_status()

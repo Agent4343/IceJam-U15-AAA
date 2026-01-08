@@ -482,7 +482,7 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
-def scrape_icejam(league_id: str = None, season: str = "2026") -> Dict:
+def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings data from icejam.ca using their API"""
     try:
         # Use provided league_id or default to IceJam U15
@@ -562,7 +562,7 @@ def scrape_icejam(league_id: str = None, season: str = "2026") -> Dict:
         }
 
 
-def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
+def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
         lg = league_id or DEFAULT_LEAGUE
@@ -788,7 +788,7 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
     return sorted_standings, tiebreaker_log
 
 
-def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2026") -> Dict:
+def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings and apply tournament tiebreaker rules"""
     # Get standings
     standings_result = scrape_icejam(league_id, season)
@@ -1169,7 +1169,7 @@ def clear_games():
 @app.get("/api/scrape")
 def scrape(
     league: str = Query(None, description="League ID (default: IceJam U15)"),
-    season: str = Query("2026", description="Season year (default: 2026 for IceJam tournament)"),
+    season: str = Query("2025", description="Season year (default: 2025 for 2025-2026 season)"),
     apply_rules: bool = Query(True, description="Apply tournament tiebreaker rules")
 ):
     """Scrape standings from icejam.ca API with optional tiebreaker rules"""
@@ -1181,7 +1181,7 @@ def scrape(
 @app.get("/api/scores")
 def get_scores(
     league: str = Query(None, description="League ID"),
-    season: str = Query("2026", description="Season year")
+    season: str = Query("2025", description="Season year")
 ):
     """Get game scores for tiebreaker calculations"""
     return fetch_game_scores(league, season)

@@ -576,8 +576,8 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
         html = response.text
         games = []
 
-        # Try to extract json variable with game data
-        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Try to extract json variable with game data (handles var/let/const json = [...])
+        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
         if json_match:
             try:
                 games_json = json_lib.loads(json_match.group(1))
@@ -1335,6 +1335,50 @@ def debug_schedule():
             "sections": hitmen_sections[:5]  # First 5 matches
         }
     except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/debug-scores")
+def debug_scores():
+    """Debug: show raw data from icejam.ca/scores/"""
+    try:
+        lg = DEFAULT_LEAGUE
+        scores_url = f"{BASE}/scores/?lg={lg}"
+        response = requests.get(scores_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        html = response.text
+
+        # Try to find JSON variable
+        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+
+        result = {
+            "ok": True,
+            "url": scores_url,
+            "html_length": len(html),
+            "json_found": bool(json_match),
+        }
+
+        if json_match:
+            try:
+                games_json = json_lib.loads(json_match.group(1))
+                result["total_games"] = len(games_json)
+                # Show first 3 games as sample
+                result["sample_games"] = games_json[:3] if games_json else []
+                # Count games by league
+                league_counts = {}
+                for g in games_json:
+                    gl = str(g.get("lg", "unknown"))
+                    league_counts[gl] = league_counts.get(gl, 0) + 1
+                result["games_by_league"] = league_counts
+            except Exception as e:
+                result["json_parse_error"] = str(e)
+        else:
+            # Show a snippet of the HTML to help debug
+            result["html_snippet"] = html[:2000]
+
+        return result
+    except requests.exceptions.RequestException as e:
         return {"ok": False, "error": str(e)}
 
 

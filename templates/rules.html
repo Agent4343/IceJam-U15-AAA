@@ -163,25 +163,52 @@ li { margin:6px 0; font-size:14px; line-height:1.5; }
 
   <div class="card">
     <h2>Playoff Bracket</h2>
-    <p class="small">Top 16 teams qualify. First round matchups:</p>
+    <p class="small">26 teams compete in round robin. Top 16 advance to playoffs.</p>
+    <h3>Round of 16</h3>
     <table>
       <tr><th>Game</th><th>Matchup</th></tr>
-      <tr><td>P01</td><td><b>Rank 1</b> vs Rank 16</td></tr>
-      <tr><td>P02</td><td><b>Rank 2</b> vs Rank 15</td></tr>
-      <tr><td>P03</td><td><b>Rank 3</b> vs Rank 14</td></tr>
-      <tr><td>P04</td><td><b>Rank 4</b> vs Rank 13</td></tr>
-      <tr><td>P05</td><td><b>Rank 5</b> vs Rank 12</td></tr>
-      <tr><td>P06</td><td><b>Rank 6</b> vs Rank 11</td></tr>
-      <tr><td>P07</td><td><b>Rank 7</b> vs Rank 10</td></tr>
-      <tr><td>P08</td><td><b>Rank 8</b> vs Rank 9</td></tr>
+      <tr><td>PO1</td><td><b>Rank 1</b> vs Rank 16</td></tr>
+      <tr><td>PO2</td><td><b>Rank 8</b> vs Rank 9</td></tr>
+      <tr><td>PO3</td><td><b>Rank 2</b> vs Rank 15</td></tr>
+      <tr><td>PO4</td><td><b>Rank 7</b> vs Rank 10</td></tr>
+      <tr><td>PO5</td><td><b>Rank 3</b> vs Rank 14</td></tr>
+      <tr><td>PO6</td><td><b>Rank 6</b> vs Rank 11</td></tr>
+      <tr><td>PO7</td><td><b>Rank 4</b> vs Rank 13</td></tr>
+      <tr><td>PO8</td><td><b>Rank 5</b> vs Rank 12</td></tr>
     </table>
-    <p class="small" style="margin-top:12px;">Higher seed is home team. Winners advance to quarterfinals.</p>
+    <h3>Quarter-Finals</h3>
+    <table>
+      <tr><th>Game</th><th>Matchup</th></tr>
+      <tr><td>QF1</td><td>Winner PO2 vs Winner PO1</td></tr>
+      <tr><td>QF2</td><td>Winner PO4 vs Winner PO3</td></tr>
+      <tr><td>QF3</td><td>Winner PO6 vs Winner PO5</td></tr>
+      <tr><td>QF4</td><td>Winner PO8 vs Winner PO7</td></tr>
+    </table>
+    <h3>Semi-Finals &amp; Final</h3>
+    <table>
+      <tr><th>Game</th><th>Matchup</th></tr>
+      <tr><td>SF1</td><td>Winner QF2 vs Winner QF1</td></tr>
+      <tr><td>SF2</td><td>Winner QF4 vs Winner QF3</td></tr>
+      <tr><td>Final</td><td>Winner SF2 vs Winner SF1</td></tr>
+    </table>
+    <p class="small" style="margin-top:12px;">Higher seed is home team (white jerseys).</p>
+  </div>
+
+  <div class="card">
+    <h2>Replacement Seeding</h2>
+    <p class="small">This tournament uses <b>Replacement Seeding</b> for all playoff games:</p>
+    <ul>
+      <li>When a lower-ranked team beats a higher-ranked team, the winner <b>takes over</b> the defeated team's seed</li>
+      <li>Example: If Rank 16 beats Rank 1, the Rank 16 team becomes the new #1 seed for the rest of the tournament</li>
+      <li>This rewards upsets and keeps higher seeds as home teams in later rounds</li>
+    </ul>
   </div>
 
   <div class="card">
     <h2>Playoff Rules</h2>
     <ul>
-      <li><b>Replacement Seeding:</b> If a lower seed beats a higher seed, they take that seed position for the rest of the tournament</li>
+      <li><b>Overtime:</b> 10 min 3v3, then shootout (no ties in playoffs)</li>
+      <li><b>Championship OT:</b> 10 min 3v3, then 20 min periods until winner</li>
       <li><b>AP Players:</b> Players on higher teams can't play for their main team until the lower team is eliminated</li>
     </ul>
   </div>

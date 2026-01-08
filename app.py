@@ -1139,7 +1139,20 @@ def get_scores(
 
 @app.get("/api/playoff-bracket")
 def playoff_bracket():
-    """Generate playoff bracket based on scraped standings."""
+    """
+    Generate playoff bracket based on scraped standings.
+
+    This tournament uses REPLACEMENT SEEDING:
+    - When a lower-ranked team beats a higher-ranked team, the lower-ranked team
+      takes over the defeated team's seeding position for the rest of the tournament.
+    - Example: If Rank 16 beats Rank 1, the Rank 16 team becomes the new Rank 1 seed.
+
+    Bracket Structure:
+    - Round of 16 (PO1-PO8): Top 16 teams from round robin (26 teams total)
+    - Quarter-Finals (QF1-QF4): Winners re-seeded
+    - Semi-Finals (SF1-SF2): Winners re-seeded
+    - Final: Championship game
+    """
     standings_result = scrape_icejam()
 
     if not standings_result.get("ok") or not standings_result.get("standings"):
@@ -1152,58 +1165,88 @@ def playoff_bracket():
     standings = standings_result["standings"]
     teams_count = len(standings)
 
-    # Standard 16-team bracket (1v16, 2v15, 3v14, etc.)
-    # If fewer than 16 teams, some get byes
-    bracket = []
-    matchup_pairs = [
-        (1, 16, "P01"),
-        (2, 15, "P02"),
-        (3, 14, "P03"),
-        (4, 13, "P04"),
-        (5, 12, "P05"),
-        (6, 11, "P06"),
-        (7, 10, "P07"),
-        (8, 9, "P08"),
+    def get_team(rank):
+        """Get team by rank, return None if rank exceeds available teams."""
+        if rank <= teams_count:
+            team = standings[rank - 1]
+            return {
+                "rank": rank,
+                "team": team["team"],
+                "record": f"{team['w']}-{team['l']}-{team['t']}",
+                "pts": team["pts"]
+            }
+        return None
+
+    # Round of 16 matchups (structured for replacement seeding bracket)
+    # Pairings designed so QF matchups are: PO2vPO1, PO4vPO3, PO6vPO5, PO8vPO7
+    round_of_16 = [
+        {"game": "PO1", "high": 1, "low": 16},
+        {"game": "PO2", "high": 8, "low": 9},
+        {"game": "PO3", "high": 2, "low": 15},
+        {"game": "PO4", "high": 7, "low": 10},
+        {"game": "PO5", "high": 3, "low": 14},
+        {"game": "PO6", "high": 6, "low": 11},
+        {"game": "PO7", "high": 4, "low": 13},
+        {"game": "PO8", "high": 5, "low": 12},
     ]
 
-    for high_seed, low_seed, game_id in matchup_pairs:
-        high_team = standings[high_seed - 1] if high_seed <= teams_count else None
-        low_team = standings[low_seed - 1] if low_seed <= teams_count else None
+    bracket = []
+    for matchup in round_of_16:
+        high_team = get_team(matchup["high"])
+        low_team = get_team(matchup["low"])
 
         if high_team and low_team:
             bracket.append({
-                "game": game_id,
-                "high_seed": {
-                    "rank": high_seed,
-                    "team": high_team["team"],
-                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
-                    "pts": high_team["pts"]
-                },
-                "low_seed": {
-                    "rank": low_seed,
-                    "team": low_team["team"],
-                    "record": f"{low_team['w']}-{low_team['l']}-{low_team['t']}",
-                    "pts": low_team["pts"]
-                },
-                "matchup": f"#{high_seed} {high_team['team']} vs #{low_seed} {low_team['team']}"
+                "game": matchup["game"],
+                "round": "Round of 16",
+                "high_seed": high_team,
+                "low_seed": low_team,
+                "matchup": f"#{matchup['high']} {high_team['team']} vs #{matchup['low']} {low_team['team']}",
+                "home_team": high_team["team"],
+                "note": "Higher seed is HOME (white jerseys)"
             })
         elif high_team:
             bracket.append({
-                "game": game_id,
-                "high_seed": {
-                    "rank": high_seed,
-                    "team": high_team["team"],
-                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
-                    "pts": high_team["pts"]
-                },
+                "game": matchup["game"],
+                "round": "Round of 16",
+                "high_seed": high_team,
                 "low_seed": None,
-                "matchup": f"#{high_seed} {high_team['team']} - BYE"
+                "matchup": f"#{matchup['high']} {high_team['team']} - BYE",
+                "home_team": high_team["team"],
+                "note": "Advances automatically"
             })
+
+    # Quarter-final structure (winners with replacement seeding)
+    quarter_finals = [
+        {"game": "QF1", "from": ["PO2", "PO1"], "note": "Winner PO2 vs Winner PO1"},
+        {"game": "QF2", "from": ["PO4", "PO3"], "note": "Winner PO4 vs Winner PO3"},
+        {"game": "QF3", "from": ["PO6", "PO5"], "note": "Winner PO6 vs Winner PO5"},
+        {"game": "QF4", "from": ["PO8", "PO7"], "note": "Winner PO8 vs Winner PO7"},
+    ]
+
+    # Semi-final structure
+    semi_finals = [
+        {"game": "SF1", "from": ["QF2", "QF1"], "note": "Winner QF2 vs Winner QF1"},
+        {"game": "SF2", "from": ["QF4", "QF3"], "note": "Winner QF4 vs Winner QF3"},
+    ]
+
+    # Final
+    final = {"game": "Final", "from": ["SF2", "SF1"], "note": "Winner SF2 vs Winner SF1"}
 
     return {
         "ok": True,
         "teams_count": teams_count,
+        "teams_in_playoffs": min(teams_count, 16),
+        "teams_eliminated": max(0, teams_count - 16),
         "bracket": bracket,
+        "quarter_finals": quarter_finals,
+        "semi_finals": semi_finals,
+        "final": final,
+        "replacement_seeding": {
+            "enabled": True,
+            "description": "When a lower seed beats a higher seed, the winner takes over the higher seed's ranking for the remainder of the tournament.",
+            "example": "If Rank 16 beats Rank 1, the Rank 16 team becomes the new #1 seed."
+        },
         "standings_url": STANDINGS_URL
     }
 

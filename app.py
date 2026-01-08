@@ -1,7 +1,28 @@
+"""
+IceJam U15 AAA Standings Tracker
+
+This app automatically tracks round robin standings for the IceJam U15 AAA tournament.
+All round robin logic is automated - standings are scraped from icejam.ca and tiebreaker
+rules are applied automatically to determine rankings.
+
+TIEBREAKER LIMITATIONS:
+    The following tiebreakers ARE implemented automatically:
+        TB1: Head-to-head record
+        TB2: Most wins
+        TB3: Goal average (GF / (GF + GA))
+        TB4: Fewest goals against
+        TB5: Most goals for
+        TB6: Fewest penalty minutes
+        TB9: Alphabetical order (deterministic fallback for coin toss)
+
+    The following tiebreakers CANNOT be determined (data not available from icejam.ca):
+        TB7: First goal in head-to-head game (requires play-by-play data)
+        TB8: Fastest first goal of tournament (requires play-by-play data)
+"""
 from __future__ import annotations
+import json as json_lib
 import re
 import uuid
-import random
 import logging
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
@@ -13,7 +34,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,13 +43,11 @@ logger = logging.getLogger(__name__)
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
-DEFAULT_TEAM = "Eastern Hitmen"
-DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
+DEFAULT_TEAM = "Eastern Hitman"
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitman's league)
 
-# IceJam U15 AAA teams (will be populated from live standings)
-TEAMS = [
-    "Eastern Hitmen",
-]
+# Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
+TOURNAMENT_TIME_MULTIPLIER = 100000
 
 # Browser headers to avoid being blocked (no Accept-Encoding to get plain text)
 HEADERS = {
@@ -80,15 +99,22 @@ class TeamStats:
 
 
 class GameInput(BaseModel):
-    team_a: str
-    team_b: str
-    goals_a: int
-    goals_b: int
+    team_a: str = Field(..., min_length=1, max_length=100, description="Home team name")
+    team_b: str = Field(..., min_length=1, max_length=100, description="Away team name")
+    goals_a: int = Field(..., ge=0, le=100, description="Goals scored by team A")
+    goals_b: int = Field(..., ge=0, le=100, description="Goals scored by team B")
     ot: bool = False
-    pim_a: int = 0
-    pim_b: int = 0
-    first_goal_team: str = ""  # "a" or "b" or team name
-    first_goal_time_sec: Optional[int] = None
+    pim_a: int = Field(default=0, ge=0, le=500, description="Penalty minutes for team A")
+    pim_b: int = Field(default=0, ge=0, le=500, description="Penalty minutes for team B")
+    first_goal_team: str = Field(default="", max_length=100, description="'a' or 'b' or team name")
+    first_goal_time_sec: Optional[int] = Field(default=None, ge=0, le=3600, description="Time in seconds when first goal was scored")
+
+    @field_validator('team_b')
+    @classmethod
+    def teams_must_be_different(cls, v, info):
+        if 'team_a' in info.data and v.strip().lower() == info.data['team_a'].strip().lower():
+            raise ValueError('team_a and team_b must be different teams')
+        return v
 
 
 app = FastAPI()
@@ -108,10 +134,10 @@ def points_for_game(gf: int, ga: int, ot: bool) -> Tuple[int, int, int, int, int
     return (1, 0, 1, 0, 0, 1) if ot else (0, 0, 1, 0, 0, 0)
 
 
-def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[int, int, int, str, str]:
+def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[int, int, int, str]:
     """
     Get head-to-head record between two teams.
-    Returns (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_team)
+    Returns (team1_pts, team2_pts, games_played, first_goal_winner)
     """
     team1_pts = 0
     team2_pts = 0
@@ -146,7 +172,7 @@ def get_head_to_head(team1: str, team2: str, games: Dict[str, Game]) -> Tuple[in
                     elif game.first_goal_team.lower() == "b" or game.first_goal_team == team1:
                         first_goal_winner = team1
 
-    return (team1_pts, team2_pts, games_played, first_goal_winner, first_goal_winner)
+    return (team1_pts, team2_pts, games_played, first_goal_winner)
 
 
 def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> int:
@@ -160,7 +186,7 @@ def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> i
 
     # Tiebreaker 1: Head-to-head
     h2h = get_head_to_head(t1.name, t2.name, games)
-    t1_h2h_pts, t2_h2h_pts, games_played, first_goal_winner, _ = h2h
+    t1_h2h_pts, t2_h2h_pts, games_played, first_goal_winner = h2h
     if games_played > 0 and t1_h2h_pts != t2_h2h_pts:
         return -1 if t1_h2h_pts > t2_h2h_pts else 1
 
@@ -199,8 +225,9 @@ def compare_two_teams(t1: TeamStats, t2: TeamStats, games: Dict[str, Game]) -> i
     if t1_first != t2_first:
         return -1 if t1_first < t2_first else 1
 
-    # Tiebreaker 9: Coin toss (random)
-    return random.choice([-1, 1])
+    # Tiebreaker 9: Alphabetical order (deterministic fallback for coin toss)
+    # Note: In actual tournament, this would be a coin toss. Using alphabetical for consistent results.
+    return -1 if t1.name.lower() < t2.name.lower() else 1
 
 
 def get_record_among_tied(teams: List[TeamStats], games: Dict[str, Game]) -> Dict[str, int]:
@@ -321,8 +348,8 @@ def sort_tied_group(teams: List[TeamStats], games: Dict[str, Game]) -> List[Team
         if t1_first != t2_first:
             return -1 if t1_first < t2_first else 1
 
-        # Step 8: Coin toss
-        return random.choice([-1, 1])
+        # Step 8: Alphabetical order (deterministic fallback for coin toss)
+        return -1 if t1.name.lower() < t2.name.lower() else 1
 
     return sorted(teams, key=cmp_to_key(compare_multi))
 
@@ -382,8 +409,8 @@ def calculate_standings() -> List[dict]:
 
         # Track first goal of tournament for each team
         if game.first_goal_team and game.first_goal_time_sec is not None:
-            # Calculate tournament time (game_number * large number + seconds)
-            tournament_time = game.game_number * 100000 + game.first_goal_time_sec
+            # Calculate tournament time (game_number * multiplier + seconds)
+            tournament_time = game.game_number * TOURNAMENT_TIME_MULTIPLIER + game.first_goal_time_sec
 
             first_goal_team_name = ""
             if game.first_goal_team.lower() == "a":
@@ -458,8 +485,6 @@ def calculate_standings() -> List[dict]:
 def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings data from icejam.ca using their API"""
     try:
-        import json as json_lib
-
         # Use provided league_id or default to IceJam U15
         lg = league_id or DEFAULT_LEAGUE
 
@@ -540,7 +565,6 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
 def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
-        import json as json_lib
         lg = league_id or DEFAULT_LEAGUE
 
         # Fetch scores from the scores page
@@ -597,18 +621,31 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
 def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     """
     Apply tournament tiebreaker rules to live standings data.
-    Uses the 9-step tiebreaker formula from the rules.
     Returns (sorted_standings, tiebreaker_log) with details of calculations.
+
+    LIMITATION: Not all tiebreakers can be applied with scraped data.
+    The following tiebreakers ARE implemented:
+        TB1: Head-to-head record (when game scores available)
+        TB2: Most wins
+        TB3: Goal average (GF / (GF + GA))
+        TB4: Fewest goals against
+        TB5: Most goals for
+        TB6: Fewest penalty minutes
+        TB9: Alphabetical order (deterministic fallback for coin toss)
+
+    The following tiebreakers CANNOT be implemented (data not available):
+        TB7: First goal in head-to-head game (requires play-by-play data)
+        TB8: Fastest first goal of tournament (requires play-by-play data)
     """
-    if not standings or not games:
+    if not standings:
         return standings, []
 
     tiebreaker_log = []  # Log of tiebreaker decisions
 
-    # Build head-to-head record
+    # Build head-to-head record (empty if no games provided)
     h2h = {}  # {(team1, team2): {team1: pts, team2: pts}}
 
-    for game in games:
+    for game in (games or []):
         home = game["home"]
         away = game["away"]
         home_score = game["home_score"]
@@ -678,9 +715,10 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
             reason = f"TB6 Fewest PIM: {t1['team']} ({t1_pim} PIM) vs {t2['team']} ({t2_pim} PIM)"
             return (-1 if t1_pim < t2_pim else 1, reason)
 
-        # Still tied after all tiebreakers
-        reason = f"TIED: {t1['team']} vs {t2['team']} (need TB7-9: first goal h2h, fastest goal, coin toss)"
-        return (0, reason)
+        # TB7-8: First goal data not available from scraped standings
+        # TB9: Alphabetical order (deterministic fallback for coin toss)
+        reason = f"TB9 Alphabetical: {t1['team']} vs {t2['team']} (TB7-8 require first goal data not available)"
+        return (-1 if t1["team"].lower() < t2["team"].lower() else 1, reason)
 
     def compare_teams(t1: Dict, t2: Dict) -> int:
         result, reason = compare_teams_with_log(t1, t2)
@@ -742,8 +780,6 @@ def scrape_icejam_html(league_id: str = None) -> Dict:
 
         html = response.text
         standings_data = []
-
-        import json as json_lib
 
         # Try to extract jsonSt variable (RYNA Hockey format)
         # Structure: jsonSt = [{"jsonStandings": [{team1}, {team2}, ...]}]
@@ -920,7 +956,6 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
         schedule_data = []
 
         # Extract the json = [...] JavaScript variable
-        import json as json_lib
         json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
 
         if json_match:
@@ -931,9 +966,9 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
                 # Filter for games containing the tracked team
                 team_lower = team.lower()
                 search_terms = [team_lower]
-                # Also search for short name like "Hitmen"
-                if "hitmen" in team_lower:
-                    search_terms.append("hitmen")
+                # Also search for short name like "Hitman"
+                if "hitman" in team_lower:
+                    search_terms.append("hitman")
 
                 for game in games_json:
                     home = (game.get("h_n") or "").lower()
@@ -990,7 +1025,7 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
 def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "default_team": DEFAULT_TEAM, "teams": TEAMS}
+        {"request": request, "default_team": DEFAULT_TEAM}
     )
 
 
@@ -1003,12 +1038,6 @@ def rules(request: Request):
 
 
 # ============ API ROUTES ============
-
-@app.get("/api/teams")
-def get_teams():
-    """Get list of all teams."""
-    return {"ok": True, "teams": TEAMS}
-
 
 @app.get("/api/standings")
 def standings(team: str = Query(DEFAULT_TEAM)):
@@ -1110,7 +1139,20 @@ def get_scores(
 
 @app.get("/api/playoff-bracket")
 def playoff_bracket():
-    """Generate playoff bracket based on scraped standings."""
+    """
+    Generate playoff bracket based on scraped standings.
+
+    This tournament uses REPLACEMENT SEEDING:
+    - When a lower-ranked team beats a higher-ranked team, the lower-ranked team
+      takes over the defeated team's seeding position for the rest of the tournament.
+    - Example: If Rank 16 beats Rank 1, the Rank 16 team becomes the new Rank 1 seed.
+
+    Bracket Structure:
+    - Round of 16 (PO1-PO8): Top 16 teams from round robin (26 teams total)
+    - Quarter-Finals (QF1-QF4): Winners re-seeded
+    - Semi-Finals (SF1-SF2): Winners re-seeded
+    - Final: Championship game
+    """
     standings_result = scrape_icejam()
 
     if not standings_result.get("ok") or not standings_result.get("standings"):
@@ -1123,58 +1165,88 @@ def playoff_bracket():
     standings = standings_result["standings"]
     teams_count = len(standings)
 
-    # Standard 16-team bracket (1v16, 2v15, 3v14, etc.)
-    # If fewer than 16 teams, some get byes
-    bracket = []
-    matchup_pairs = [
-        (1, 16, "P01"),
-        (2, 15, "P02"),
-        (3, 14, "P03"),
-        (4, 13, "P04"),
-        (5, 12, "P05"),
-        (6, 11, "P06"),
-        (7, 10, "P07"),
-        (8, 9, "P08"),
+    def get_team(rank):
+        """Get team by rank, return None if rank exceeds available teams."""
+        if rank <= teams_count:
+            team = standings[rank - 1]
+            return {
+                "rank": rank,
+                "team": team["team"],
+                "record": f"{team['w']}-{team['l']}-{team['t']}",
+                "pts": team["pts"]
+            }
+        return None
+
+    # Round of 16 matchups (structured for replacement seeding bracket)
+    # Pairings designed so QF matchups are: PO2vPO1, PO4vPO3, PO6vPO5, PO8vPO7
+    round_of_16 = [
+        {"game": "PO1", "high": 1, "low": 16},
+        {"game": "PO2", "high": 8, "low": 9},
+        {"game": "PO3", "high": 2, "low": 15},
+        {"game": "PO4", "high": 7, "low": 10},
+        {"game": "PO5", "high": 3, "low": 14},
+        {"game": "PO6", "high": 6, "low": 11},
+        {"game": "PO7", "high": 4, "low": 13},
+        {"game": "PO8", "high": 5, "low": 12},
     ]
 
-    for high_seed, low_seed, game_id in matchup_pairs:
-        high_team = standings[high_seed - 1] if high_seed <= teams_count else None
-        low_team = standings[low_seed - 1] if low_seed <= teams_count else None
+    bracket = []
+    for matchup in round_of_16:
+        high_team = get_team(matchup["high"])
+        low_team = get_team(matchup["low"])
 
         if high_team and low_team:
             bracket.append({
-                "game": game_id,
-                "high_seed": {
-                    "rank": high_seed,
-                    "team": high_team["team"],
-                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
-                    "pts": high_team["pts"]
-                },
-                "low_seed": {
-                    "rank": low_seed,
-                    "team": low_team["team"],
-                    "record": f"{low_team['w']}-{low_team['l']}-{low_team['t']}",
-                    "pts": low_team["pts"]
-                },
-                "matchup": f"#{high_seed} {high_team['team']} vs #{low_seed} {low_team['team']}"
+                "game": matchup["game"],
+                "round": "Round of 16",
+                "high_seed": high_team,
+                "low_seed": low_team,
+                "matchup": f"#{matchup['high']} {high_team['team']} vs #{matchup['low']} {low_team['team']}",
+                "home_team": high_team["team"],
+                "note": "Higher seed is HOME (white jerseys)"
             })
         elif high_team:
             bracket.append({
-                "game": game_id,
-                "high_seed": {
-                    "rank": high_seed,
-                    "team": high_team["team"],
-                    "record": f"{high_team['w']}-{high_team['l']}-{high_team['t']}",
-                    "pts": high_team["pts"]
-                },
+                "game": matchup["game"],
+                "round": "Round of 16",
+                "high_seed": high_team,
                 "low_seed": None,
-                "matchup": f"#{high_seed} {high_team['team']} - BYE"
+                "matchup": f"#{matchup['high']} {high_team['team']} - BYE",
+                "home_team": high_team["team"],
+                "note": "Advances automatically"
             })
+
+    # Quarter-final structure (winners with replacement seeding)
+    quarter_finals = [
+        {"game": "QF1", "from": ["PO2", "PO1"], "note": "Winner PO2 vs Winner PO1"},
+        {"game": "QF2", "from": ["PO4", "PO3"], "note": "Winner PO4 vs Winner PO3"},
+        {"game": "QF3", "from": ["PO6", "PO5"], "note": "Winner PO6 vs Winner PO5"},
+        {"game": "QF4", "from": ["PO8", "PO7"], "note": "Winner PO8 vs Winner PO7"},
+    ]
+
+    # Semi-final structure
+    semi_finals = [
+        {"game": "SF1", "from": ["QF2", "QF1"], "note": "Winner QF2 vs Winner QF1"},
+        {"game": "SF2", "from": ["QF4", "QF3"], "note": "Winner QF4 vs Winner QF3"},
+    ]
+
+    # Final
+    final = {"game": "Final", "from": ["SF2", "SF1"], "note": "Winner SF2 vs Winner SF1"}
 
     return {
         "ok": True,
         "teams_count": teams_count,
+        "teams_in_playoffs": min(teams_count, 16),
+        "teams_eliminated": max(0, teams_count - 16),
         "bracket": bracket,
+        "quarter_finals": quarter_finals,
+        "semi_finals": semi_finals,
+        "final": final,
+        "replacement_seeding": {
+            "enabled": True,
+            "description": "When a lower seed beats a higher seed, the winner takes over the higher seed's ranking for the remainder of the tournament.",
+            "example": "If Rank 16 beats Rank 1, the Rank 16 team becomes the new #1 seed."
+        },
         "standings_url": STANDINGS_URL
     }
 
@@ -1224,7 +1296,6 @@ def debug_standings():
         response.raise_for_status()
 
         html = response.text
-        import json as json_lib
 
         # Try multiple regex patterns to find JSON data
         patterns_tried = []
@@ -1333,7 +1404,6 @@ def debug_leagues():
         response.raise_for_status()
 
         html = response.text
-        import json as json_lib
 
         # Look for jsonSLeague variable - try multiple formats
         leagues_info = []

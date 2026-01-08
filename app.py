@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 BASE = "https://icejam.ca"
 STANDINGS_URL = f"{BASE}/standings/"
 SCHEDULE_URL = f"{BASE}/schedule/"
-DEFAULT_TEAM = "Eastern Hitman"
-DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitman's league)
+DEFAULT_TEAM = "Eastern Hitmen"
+DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000
@@ -482,7 +482,7 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
-def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
+def scrape_icejam(league_id: str = None, season: str = "2026") -> Dict:
     """Scrape standings data from icejam.ca using their API"""
     try:
         # Use provided league_id or default to IceJam U15
@@ -562,7 +562,7 @@ def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
         }
 
 
-def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
+def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
         lg = league_id or DEFAULT_LEAGUE
@@ -741,7 +741,7 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
     return sorted_standings, tiebreaker_log
 
 
-def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") -> Dict:
+def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2026") -> Dict:
     """Scrape standings and apply tournament tiebreaker rules"""
     # Get standings
     standings_result = scrape_icejam(league_id, season)
@@ -945,11 +945,13 @@ def scrape_icejam_html(league_id: str = None) -> Dict:
         }
 
 
-def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
+def scrape_schedule(team: str = DEFAULT_TEAM, league_id: str = None) -> Dict:
     """Scrape schedule data from icejam.ca/schedule/"""
     try:
-        logger.info(f"Fetching {SCHEDULE_URL}")
-        response = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=10)
+        lg = league_id or DEFAULT_LEAGUE
+        url = f"{SCHEDULE_URL}?lg={lg}"
+        logger.info(f"Fetching {url}")
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
         html = response.text
@@ -966,9 +968,9 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
                 # Filter for games containing the tracked team
                 team_lower = team.lower()
                 search_terms = [team_lower]
-                # Also search for short name like "Hitman"
-                if "hitman" in team_lower:
-                    search_terms.append("hitman")
+                # Also search for short name variations (Hitman/Hitmen)
+                if "hitman" in team_lower or "hitmen" in team_lower:
+                    search_terms.extend(["hitman", "hitmen"])
 
                 for game in games_json:
                     home = (game.get("h_n") or "").lower()
@@ -1004,7 +1006,8 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
 
         return {
             "ok": True,
-            "url": SCHEDULE_URL,
+            "url": url,
+            "league_id": lg,
             "team": team,
             "games_found": len(schedule_data),
             "schedule": schedule_data
@@ -1015,7 +1018,7 @@ def scrape_schedule(team: str = DEFAULT_TEAM) -> Dict:
         return {
             "ok": False,
             "error": str(e),
-            "url": SCHEDULE_URL
+            "url": url if 'url' in locals() else SCHEDULE_URL
         }
 
 
@@ -1119,7 +1122,7 @@ def clear_games():
 @app.get("/api/scrape")
 def scrape(
     league: str = Query(None, description="League ID (default: IceJam U15)"),
-    season: str = Query("2025", description="Season year (default: 2025 for 2025/26)"),
+    season: str = Query("2026", description="Season year (default: 2026 for IceJam tournament)"),
     apply_rules: bool = Query(True, description="Apply tournament tiebreaker rules")
 ):
     """Scrape standings from icejam.ca API with optional tiebreaker rules"""
@@ -1131,7 +1134,7 @@ def scrape(
 @app.get("/api/scores")
 def get_scores(
     league: str = Query(None, description="League ID"),
-    season: str = Query("2025", description="Season year")
+    season: str = Query("2026", description="Season year")
 ):
     """Get game scores for tiebreaker calculations"""
     return fetch_game_scores(league, season)

@@ -627,7 +627,7 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
     The following tiebreakers ARE implemented:
         TB1: Head-to-head record (when game scores available)
         TB2: Most wins
-        TB3: Goal average (GF / (GF + GA))
+        TB3: Goal average (GF / (GF + GA)) - with +7 cap per game
         TB4: Fewest goals against
         TB5: Most goals for
         TB6: Fewest penalty minutes
@@ -642,8 +642,9 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
 
     tiebreaker_log = []  # Log of tiebreaker decisions
 
-    # Build head-to-head record (empty if no games provided)
+    # Build head-to-head record and calculate capped GF/GA from game scores
     h2h = {}  # {(team1, team2): {team1: pts, team2: pts}}
+    capped_stats = {}  # {team: {"gf": X, "ga": Y}} with +7 cap per game
 
     for game in (games or []):
         home = game["home"]
@@ -652,7 +653,36 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
         away_score = game["away_score"]
         ot = game.get("ot", False)
 
-        # Calculate points
+        # Apply goal differential cap (+7 max per game)
+        diff = abs(home_score - away_score)
+        capped_diff = min(diff, 7)
+
+        if home_score > away_score:
+            capped_home_gf = away_score + capped_diff
+            capped_home_ga = away_score
+            capped_away_gf = away_score
+            capped_away_ga = capped_home_gf
+        elif away_score > home_score:
+            capped_away_gf = home_score + capped_diff
+            capped_away_ga = home_score
+            capped_home_gf = home_score
+            capped_home_ga = capped_away_gf
+        else:
+            capped_home_gf = capped_home_ga = home_score
+            capped_away_gf = capped_away_ga = away_score
+
+        # Accumulate capped stats
+        if home not in capped_stats:
+            capped_stats[home] = {"gf": 0, "ga": 0}
+        if away not in capped_stats:
+            capped_stats[away] = {"gf": 0, "ga": 0}
+
+        capped_stats[home]["gf"] += capped_home_gf
+        capped_stats[home]["ga"] += capped_home_ga
+        capped_stats[away]["gf"] += capped_away_gf
+        capped_stats[away]["ga"] += capped_away_ga
+
+        # Calculate points for h2h
         if home_score > away_score:
             home_pts = 2
             away_pts = 1 if ot else 0
@@ -668,6 +698,17 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
             h2h[key] = {home: 0, away: 0}
         h2h[key][home] = h2h[key].get(home, 0) + home_pts
         h2h[key][away] = h2h[key].get(away, 0) + away_pts
+
+    # Update standings with capped GF/GA if game data available
+    for team in standings:
+        team_name = team["team"]
+        if team_name in capped_stats:
+            team["gf_capped"] = capped_stats[team_name]["gf"]
+            team["ga_capped"] = capped_stats[team_name]["ga"]
+        else:
+            # Fallback to raw values if no game data
+            team["gf_capped"] = team["gf"]
+            team["ga_capped"] = team["ga"]
 
     def compare_teams_with_log(t1: Dict, t2: Dict) -> Tuple[int, str]:
         """Compare two teams and return (result, reason)."""
@@ -691,22 +732,24 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
             reason = f"TB2 Wins: {t1['team']} ({t1['w']}W) vs {t2['team']} ({t2['w']}W)"
             return (-1 if t1["w"] > t2["w"] else 1, reason)
 
-        # Tiebreaker 3: Goal average (GF / (GF + GA))
-        t1_ga = t1["gf"] / (t1["gf"] + t1["ga"]) if (t1["gf"] + t1["ga"]) > 0 else 0
-        t2_ga = t2["gf"] / (t2["gf"] + t2["ga"]) if (t2["gf"] + t2["ga"]) > 0 else 0
+        # Tiebreaker 3: Goal average using CAPPED values (GF / (GF + GA))
+        gf1, ga1 = t1.get("gf_capped", t1["gf"]), t1.get("ga_capped", t1["ga"])
+        gf2, ga2 = t2.get("gf_capped", t2["gf"]), t2.get("ga_capped", t2["ga"])
+        t1_ga = gf1 / (gf1 + ga1) if (gf1 + ga1) > 0 else 0
+        t2_ga = gf2 / (gf2 + ga2) if (gf2 + ga2) > 0 else 0
         if abs(t1_ga - t2_ga) > 0.0001:
-            reason = f"TB3 Goal Avg: {t1['team']} ({t1['gf']}/({t1['gf']}+{t1['ga']})={t1_ga:.3f}) vs {t2['team']} ({t2['gf']}/({t2['gf']}+{t2['ga']})={t2_ga:.3f})"
+            reason = f"TB3 Goal Avg: {t1['team']} ({gf1}/({gf1}+{ga1})={t1_ga:.3f}) vs {t2['team']} ({gf2}/({gf2}+{ga2})={t2_ga:.3f}) [+7 cap applied]"
             return (-1 if t1_ga > t2_ga else 1, reason)
 
-        # Tiebreaker 4: Fewest goals against
-        if t1["ga"] != t2["ga"]:
-            reason = f"TB4 Fewest GA: {t1['team']} ({t1['ga']} GA) vs {t2['team']} ({t2['ga']} GA)"
-            return (-1 if t1["ga"] < t2["ga"] else 1, reason)
+        # Tiebreaker 4: Fewest goals against (using capped values)
+        if ga1 != ga2:
+            reason = f"TB4 Fewest GA: {t1['team']} ({ga1} GA) vs {t2['team']} ({ga2} GA) [+7 cap applied]"
+            return (-1 if ga1 < ga2 else 1, reason)
 
-        # Tiebreaker 5: Most goals for
-        if t1["gf"] != t2["gf"]:
-            reason = f"TB5 Most GF: {t1['team']} ({t1['gf']} GF) vs {t2['team']} ({t2['gf']} GF)"
-            return (-1 if t1["gf"] > t2["gf"] else 1, reason)
+        # Tiebreaker 5: Most goals for (using capped values)
+        if gf1 != gf2:
+            reason = f"TB5 Most GF: {t1['team']} ({gf1} GF) vs {t2['team']} ({gf2} GF) [+7 cap applied]"
+            return (-1 if gf1 > gf2 else 1, reason)
 
         # Tiebreaker 6: Fewest penalty minutes
         t1_pim = t1.get("pim", 0)

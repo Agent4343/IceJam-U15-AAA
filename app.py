@@ -1598,8 +1598,14 @@ def ai_analysis(
             "error": "ANTHROPIC_API_KEY not configured. Set this environment variable in Railway."
         }
 
-    # Import anthropic only when needed (avoids build-time issues)
-    import anthropic
+    # Import anthropic only when needed (optional dependency)
+    try:
+        import anthropic
+    except ImportError:
+        return {
+            "ok": False,
+            "error": "AI feature not available. Install anthropic package: pip install anthropic"
+        }
 
     try:
         # Get current standings with tiebreakers

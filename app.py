@@ -1760,20 +1760,34 @@ def ai_analysis(
             t = standings[i]
             nearby_teams.append(f"#{i+1} {t['team']}: {t['w']}-{t['l']}-{t['t']} ({t['pts']} pts)")
 
+        # Calculate games played from standings
+        games_played = team_data['w'] + team_data['l'] + team_data.get('t', 0) + team_data.get('otl', 0)
+        goal_diff = team_data['gf'] - team_data['ga']
+        goal_diff_str = f"+{goal_diff}" if goal_diff >= 0 else str(goal_diff)
+
+        # Build recent games info
+        if team_scores:
+            recent_games_str = chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]])
+        elif games_played > 0:
+            recent_games_str = f"Played {games_played} game(s) - detailed scores not available"
+        else:
+            recent_games_str = "No games played yet"
+
         # Build the prompt
         prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
 
 Current Standings:
 - {team} is ranked #{team_rank} of {total_teams} teams
-- Record: {team_data['w']} wins, {team_data['l']} losses, {team_data['t']} ties ({team_data['pts']} points)
-- Goals: {team_data['gf']} for, {team_data['ga']} against
+- Record: {team_data['w']} wins, {team_data['l']} losses, {team_data.get('otl', 0)} OT losses ({team_data['pts']} points)
+- Games played: {games_played}
+- Goals: {team_data['gf']} for, {team_data['ga']} against (Goal Diff: {goal_diff_str})
 - Playoff position: {"IN (Top 16 qualify)" if in_playoff_position else f"OUT (need to climb {team_rank - playoff_cutoff} spots)"}
 
 Nearby Teams:
 {chr(10).join(nearby_teams)}
 
 Recent Games:
-{chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]]) if team_scores else "No completed games yet"}
+{recent_games_str}
 
 Upcoming Games:
 {chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
@@ -1781,12 +1795,17 @@ Upcoming Games:
 Tiebreaker Notes:
 {chr(10).join(tiebreakers[:5]) if tiebreakers else "No tiebreakers applied yet"}
 
+IMPORTANT: Base your analysis ONLY on the data provided above. Do not make up information.
+- If they have wins, they HAVE played games
+- Focus on their current record, goal differential, and playoff position
+- Mention specific upcoming opponents if listed
+
 Provide a brief (3-4 sentences) fan-friendly analysis covering:
-1. Current playoff position
-2. Recent performance
+1. Current playoff position and record
+2. Goal scoring performance (based on GF/GA)
 3. What to watch for in upcoming games
 
-Keep it conversational and encouraging. Use hockey terminology appropriately."""
+Keep it conversational and accurate. Use hockey terminology appropriately."""
 
         # Call Claude API
         client = anthropic.Anthropic(api_key=api_key)

@@ -586,15 +586,22 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
                 logger.info(f"Found {len(games_json)} total games in schedule JSON for scores")
 
                 for game in games_json:
-                    home_team = game.get("h_n", "")
-                    away_team = game.get("v_n", "")
-                    # hf = home final score, vf = visitor final score
-                    home_score = int(game.get("hf", 0) or 0)
-                    away_score = int(game.get("vf", 0) or 0)
-                    game_status = str(game.get("gs", "")).upper()
+                    home_team = game.get("h_n", "") or game.get("home", "")
+                    away_team = game.get("v_n", "") or game.get("away", "")
+                    # Try multiple field names for scores: hf/vf, hs/vs, home_score/away_score
+                    home_score = int(game.get("hf") or game.get("hs") or game.get("home_score") or 0)
+                    away_score = int(game.get("vf") or game.get("vs") or game.get("away_score") or 0)
+                    game_status = str(game.get("gs", "") or game.get("status", "")).upper()
 
-                    # Include completed games (status F/Final) or games with scores
-                    is_completed = game_status in ["F", "FINAL"] or (home_score > 0 or away_score > 0)
+                    # Include completed games - check multiple indicators:
+                    # 1. Status is F, FINAL, or contains "FINAL"
+                    # 2. Has scores (either team scored)
+                    # 3. Status is empty but scores exist (some systems don't set status)
+                    has_scores = home_score > 0 or away_score > 0
+                    is_final_status = game_status in ["F", "FINAL"] or "FINAL" in game_status
+
+                    # Include game if it has final status OR has scores
+                    is_completed = is_final_status or has_scores
 
                     if home_team and away_team and is_completed:
                         games.append({

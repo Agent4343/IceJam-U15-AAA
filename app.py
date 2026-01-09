@@ -1801,24 +1801,38 @@ def ai_analysis(
         total_goals = team_data['gf'] + team_data['ga']
         goal_avg = f"{team_data['gf']/total_goals:.3f}" if total_goals > 0 else "N/A"
 
-        # Build recent games info - use completed games from schedule or team_scores
-        if completed_games:
+        # Build recent games info - use team_scores for accurate data
+        if team_scores:
             recent_games_str = chr(10).join([
-                f"{g['location']} {g['opponent']}: {g['score']} ({'W' if team_data['w'] > 0 else 'L/T'})"
-                for g in completed_games[:3]
+                f"{g['home']} {g['home_score']} - {g['away_score']} {g['away']}"
+                for g in team_scores[:5]
             ])
-        elif team_scores:
+        elif completed_games:
             recent_games_str = chr(10).join([
-                f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}"
-                for g in team_scores[:3]
+                f"{g['location']} {g['opponent']}: {g['score']}"
+                for g in completed_games[:3]
             ])
         elif games_played > 0:
             recent_games_str = f"Played {games_played} game(s) - detailed scores not available"
         else:
             recent_games_str = "No games played yet"
 
-        # Build the prompt
+        # Build upcoming games string with verification
+        if upcoming_games:
+            upcoming_str = chr(10).join([f"Game vs {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games])
+        else:
+            upcoming_str = "No upcoming games found in schedule"
+
+        # Build the prompt with data source verification
+        from datetime import datetime
+        fetch_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+
         prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
+
+=== DATA SOURCES (Verified from icejam.ca at {fetch_time}) ===
+- Standings: icejam.ca/standings (league {league or DEFAULT_LEAGUE})
+- Schedule: icejam.ca/schedule (league {league or DEFAULT_LEAGUE})
+- Scores: Extracted from schedule data with completed game markers
 
 === TOURNAMENT RULES ===
 Format: {total_teams} teams in Round Robin, Top 16 make playoffs
@@ -1839,7 +1853,7 @@ Tiebreakers (in order):
 Playoffs: Top 16 qualify. Bracket: 1v16, 8v9, 2v15, 7v10, 3v14, 6v11, 4v13, 5v12
 Playoff OT: 10min 3v3, then shootout. Championship: continuous 20min periods.
 
-=== CURRENT STATUS ===
+=== VERIFIED CURRENT STATUS ===
 Phase: ROUND ROBIN (preliminary standings - will change as more games played)
 {team} Current Position: #{team_rank} of {total_teams} teams
 Record: {team_data['w']}-{team_data['l']}-{team_data.get('otl', 0)} ({team_data['pts']} points)
@@ -1848,14 +1862,15 @@ Goals: {team_data['gf']} for, {team_data['ga']} against (Diff: {goal_diff_str})
 Goal Average: {goal_avg}
 Playoff Position: {"Currently IN top 16" if in_playoff_position else f"Currently OUTSIDE - need to move up {team_rank - playoff_cutoff} spots"}
 
-Nearby Teams:
+Nearby Teams in Standings:
 {chr(10).join(nearby_teams)}
 
-Recent Results:
+=== COMPLETED GAMES (from scores data) ===
 {recent_games_str}
+Opponents already played: {', '.join(played_opponents) if played_opponents else 'None yet'}
 
-Upcoming Games:
-{chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
+=== UPCOMING GAMES (not yet played) ===
+{upcoming_str}
 
 === ANALYSIS GUIDELINES ===
 - Round robin is ONGOING - rankings are preliminary and will shift

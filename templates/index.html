@@ -96,6 +96,15 @@ th { color:#9fb0cf; font-weight:500; }
       <div class="small" style="margin-top:10px;">Tap button to load game scores</div>
     </div>
   </div>
+
+  <!-- AI Analysis -->
+  <div class="card">
+    <div class="card-title">AI Analysis</div>
+    <button onclick="fetchAIAnalysis()" style="background:#4da3ff;">Get AI Insights</button>
+    <div id="ai-result">
+      <div class="small" style="margin-top:10px;">Get AI-powered analysis of your team's playoff situation</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -350,6 +359,36 @@ async function fetchScores() {
       }
     } else {
       result.innerHTML = '<div class="small" style="margin-top:10px;">No scores available yet</div>';
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
+}
+
+async function fetchAIAnalysis() {
+  const result = document.getElementById("ai-result");
+  const tracked = document.getElementById("track-team").value || "Eastern Hitmen";
+
+  result.innerHTML = '<div class="msg info">Analyzing with AI... This may take a moment.</div>';
+
+  try {
+    const r = await fetch(`/api/ai-analysis?team=${encodeURIComponent(tracked)}`);
+    const d = await r.json();
+
+    if (d.ok && d.analysis) {
+      let html = `<div style="margin-top:12px;padding:12px;background:#1a2538;border-radius:8px;font-size:14px;line-height:1.6;">`;
+      // Convert markdown-style formatting to HTML
+      const formatted = d.analysis
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n- /g, '<br>• ')
+        .replace(/\n/g, '<br>');
+      html += `<p>${formatted}</p>`;
+      html += `</div>`;
+      html += `<div class="small" style="margin-top:8px;">Analysis for: ${d.team} | Rank: #${d.rank || '?'}</div>`;
+      result.innerHTML = html;
+    } else {
+      result.innerHTML = `<div class="msg error">${d.error || 'Failed to get AI analysis'}</div>`;
     }
   } catch (e) {
     result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;

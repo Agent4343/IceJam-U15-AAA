@@ -24,6 +24,7 @@ import json as json_lib
 import re
 import uuid
 import logging
+import os
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
 from functools import cmp_to_key
@@ -482,7 +483,7 @@ def calculate_standings() -> List[dict]:
     return standings
 
 
-def scrape_icejam(league_id: str = None, season: str = "2026") -> Dict:
+def scrape_icejam(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings data from icejam.ca using their API"""
     try:
         # Use provided league_id or default to IceJam U15
@@ -562,7 +563,7 @@ def scrape_icejam(league_id: str = None, season: str = "2026") -> Dict:
         }
 
 
-def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
+def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
         lg = league_id or DEFAULT_LEAGUE
@@ -577,36 +578,66 @@ def fetch_game_scores(league_id: str = None, season: str = "2026") -> Dict:
         games = []
 
         # Try to extract json variable with game data
-        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Use greedy match and look for ]]; or ]; at end to handle nested structures
+        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)', html)
+
+        if not json_match:
+            # Try alternate pattern - greedy match up to ]];
+            json_match = re.search(r'json\s*=\s*(\[.*\]);', html, re.DOTALL)
+
         if json_match:
             try:
-                games_json = json_lib.loads(json_match.group(1))
-                logger.info(f"Found {len(games_json)} games in scores JSON")
+                json_str = json_match.group(1)
+                # Clean up any trailing content after the array
+                bracket_count = 0
+                end_pos = 0
+                for i, char in enumerate(json_str):
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            end_pos = i + 1
+                            break
+                if end_pos > 0:
+                    json_str = json_str[:end_pos]
+
+                games_json = json_lib.loads(json_str)
+                logger.info(f"Found {len(games_json)} total games in scores JSON")
 
                 for game in games_json:
-                    # Filter by league
-                    game_league = str(game.get("lg", ""))
-                    if game_league != lg:
+                    # Filter by league (try multiple field names)
+                    game_league = str(game.get("lg", game.get("league", "")))
+
+                    # Include game if league matches OR if no league filter in data
+                    if game_league and game_league != lg:
                         continue
 
-                    home_team = game.get("h_n", "")
-                    away_team = game.get("v_n", "")
-                    home_score = int(game.get("hf", 0) or 0)
-                    away_score = int(game.get("vf", 0) or 0)
-                    game_status = game.get("gs", "")  # Game status
+                    home_team = game.get("h_n", game.get("home", ""))
+                    away_team = game.get("v_n", game.get("away", ""))
+                    home_score = int(game.get("hf", game.get("home_score", 0)) or 0)
+                    away_score = int(game.get("vf", game.get("away_score", 0)) or 0)
+                    game_status = str(game.get("gs", game.get("status", ""))).upper()
 
-                    # Only include completed games
-                    if home_team and away_team and game_status in ["F", "Final", "final", ""]:
+                    # Include completed games (F, Final) or games with scores
+                    is_completed = game_status in ["F", "FINAL", ""] or (home_score > 0 or away_score > 0)
+
+                    if home_team and away_team and is_completed:
                         games.append({
                             "home": home_team,
                             "away": away_team,
                             "home_score": home_score,
                             "away_score": away_score,
-                            "ot": "OT" in str(game.get("gp", "")),
-                            "game_num": game.get("gn", ""),
+                            "ot": "OT" in str(game.get("gp", game.get("period", ""))),
+                            "game_num": game.get("gn", game.get("game_num", "")),
                         })
+
+                logger.info(f"Filtered to {len(games)} completed games for league {lg}")
             except json_lib.JSONDecodeError as e:
                 logger.error(f"JSON parse error in scores: {e}")
+                logger.error(f"JSON string preview: {json_str[:500] if 'json_str' in locals() else 'N/A'}")
+        else:
+            logger.warning(f"No json variable found in scores page HTML (length: {len(html)})")
 
         return {
             "ok": True,
@@ -784,7 +815,7 @@ def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple
     return sorted_standings, tiebreaker_log
 
 
-def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2026") -> Dict:
+def scrape_icejam_with_tiebreakers(league_id: str = None, season: str = "2025") -> Dict:
     """Scrape standings and apply tournament tiebreaker rules"""
     # Get standings
     standings_result = scrape_icejam(league_id, season)
@@ -1165,7 +1196,7 @@ def clear_games():
 @app.get("/api/scrape")
 def scrape(
     league: str = Query(None, description="League ID (default: IceJam U15)"),
-    season: str = Query("2026", description="Season year (default: 2026 for IceJam tournament)"),
+    season: str = Query("2025", description="Season year (default: 2025 for 2025-2026 season)"),
     apply_rules: bool = Query(True, description="Apply tournament tiebreaker rules")
 ):
     """Scrape standings from icejam.ca API with optional tiebreaker rules"""
@@ -1177,7 +1208,7 @@ def scrape(
 @app.get("/api/scores")
 def get_scores(
     league: str = Query(None, description="League ID"),
-    season: str = Query("2026", description="Season year")
+    season: str = Query("2025", description="Season year")
 ):
     """Get game scores for tiebreaker calculations"""
     return fetch_game_scores(league, season)
@@ -1331,6 +1362,50 @@ def debug_schedule():
             "sections": hitmen_sections[:5]  # First 5 matches
         }
     except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/debug-scores")
+def debug_scores():
+    """Debug: show raw data from icejam.ca/scores/"""
+    try:
+        lg = DEFAULT_LEAGUE
+        scores_url = f"{BASE}/scores/?lg={lg}"
+        response = requests.get(scores_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+
+        html = response.text
+
+        # Try to find JSON variable
+        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+
+        result = {
+            "ok": True,
+            "url": scores_url,
+            "html_length": len(html),
+            "json_found": bool(json_match),
+        }
+
+        if json_match:
+            try:
+                games_json = json_lib.loads(json_match.group(1))
+                result["total_games"] = len(games_json)
+                # Show first 3 games as sample
+                result["sample_games"] = games_json[:3] if games_json else []
+                # Count games by league
+                league_counts = {}
+                for g in games_json:
+                    gl = str(g.get("lg", "unknown"))
+                    league_counts[gl] = league_counts.get(gl, 0) + 1
+                result["games_by_league"] = league_counts
+            except Exception as e:
+                result["json_parse_error"] = str(e)
+        else:
+            # Show a snippet of the HTML to help debug
+            result["html_snippet"] = html[:2000]
+
+        return result
+    except requests.exceptions.RequestException as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -1501,4 +1576,135 @@ def debug_leagues():
             "icejam_context": icejam_context[:10]
         }
     except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ AI ANALYSIS ============
+
+@app.get("/api/ai-analysis")
+def ai_analysis(
+    team: str = Query(DEFAULT_TEAM, description="Team to analyze"),
+    league: str = Query(None, description="League ID"),
+    season: str = Query("2025", description="Season year")
+):
+    """
+    Get AI-powered analysis of a team's standings and playoff situation.
+    Requires ANTHROPIC_API_KEY environment variable to be set.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {
+            "ok": False,
+            "error": "ANTHROPIC_API_KEY not configured. Set this environment variable in Railway."
+        }
+
+    # Import anthropic only when needed (optional dependency)
+    try:
+        import anthropic
+    except ImportError:
+        return {
+            "ok": False,
+            "error": "AI feature not available. Install anthropic package: pip install anthropic"
+        }
+
+    try:
+        # Get current standings with tiebreakers
+        standings_result = scrape_icejam_with_tiebreakers(league, season)
+        if not standings_result.get("ok"):
+            return {"ok": False, "error": "Could not fetch standings"}
+
+        standings = standings_result.get("standings", [])
+        tiebreakers = standings_result.get("tiebreaker_log", [])
+
+        # Find the tracked team
+        team_data = None
+        team_rank = None
+        for i, t in enumerate(standings):
+            if team.lower() in t["team"].lower():
+                team_data = t
+                team_rank = i + 1
+                break
+
+        if not team_data:
+            return {"ok": False, "error": f"Team '{team}' not found in standings"}
+
+        # Get schedule for the team
+        schedule_result = scrape_schedule(team, league)
+        upcoming_games = schedule_result.get("schedule", [])[:5] if schedule_result.get("ok") else []
+
+        # Get recent scores
+        scores_result = fetch_game_scores(league, season)
+        team_scores = []
+        if scores_result.get("ok"):
+            for game in scores_result.get("games", []):
+                if team.lower() in game["home"].lower() or team.lower() in game["away"].lower():
+                    team_scores.append(game)
+
+        # Build context for Claude
+        total_teams = len(standings)
+        playoff_cutoff = min(16, total_teams)
+        in_playoff_position = team_rank <= playoff_cutoff
+
+        # Get nearby teams in standings
+        nearby_teams = []
+        for i in range(max(0, team_rank - 3), min(total_teams, team_rank + 2)):
+            t = standings[i]
+            nearby_teams.append(f"#{i+1} {t['team']}: {t['w']}-{t['l']}-{t['t']} ({t['pts']} pts)")
+
+        # Build the prompt
+        prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
+
+Current Standings:
+- {team} is ranked #{team_rank} of {total_teams} teams
+- Record: {team_data['w']} wins, {team_data['l']} losses, {team_data['t']} ties ({team_data['pts']} points)
+- Goals: {team_data['gf']} for, {team_data['ga']} against
+- Playoff position: {"IN (Top 16 qualify)" if in_playoff_position else f"OUT (need to climb {team_rank - playoff_cutoff} spots)"}
+
+Nearby Teams:
+{chr(10).join(nearby_teams)}
+
+Recent Games:
+{chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]]) if team_scores else "No completed games yet"}
+
+Upcoming Games:
+{chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
+
+Tiebreaker Notes:
+{chr(10).join(tiebreakers[:5]) if tiebreakers else "No tiebreakers applied yet"}
+
+Provide a brief (3-4 sentences) fan-friendly analysis covering:
+1. Current playoff position
+2. Recent performance
+3. What to watch for in upcoming games
+
+Keep it conversational and encouraging. Use hockey terminology appropriately."""
+
+        # Call Claude API
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=300,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        analysis = message.content[0].text
+
+        return {
+            "ok": True,
+            "team": team_data["team"],
+            "rank": team_rank,
+            "total_teams": total_teams,
+            "in_playoffs": in_playoff_position,
+            "record": f"{team_data['w']}-{team_data['l']}-{team_data['t']}",
+            "points": team_data["pts"],
+            "analysis": analysis
+        }
+
+    except anthropic.APIError as e:
+        logger.error(f"Anthropic API error: {e}")
+        return {"ok": False, "error": f"AI service error: {str(e)}"}
+    except Exception as e:
+        logger.error(f"AI analysis error: {e}")
         return {"ok": False, "error": str(e)}

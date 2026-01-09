@@ -1749,19 +1749,37 @@ def ai_analysis(
         schedule_result = scrape_schedule(team, league)
         all_games = schedule_result.get("schedule", []) if schedule_result.get("ok") else []
 
-        # Filter to only UPCOMING games (not completed)
-        upcoming_games = [g for g in all_games if not g.get("completed", False)][:5]
-
-        # Get completed games for recent results
-        completed_games = [g for g in all_games if g.get("completed", False)]
-
-        # Get recent scores
+        # Get recent scores from the scores API
         scores_result = fetch_game_scores(league, season)
         team_scores = []
+        played_opponents = set()  # Track which opponents we've already played
         if scores_result.get("ok"):
             for game in scores_result.get("games", []):
-                if team.lower() in game["home"].lower() or team.lower() in game["away"].lower():
+                home_lower = game["home"].lower()
+                away_lower = game["away"].lower()
+                team_lower = team.lower()
+
+                if team_lower in home_lower or team_lower in away_lower or \
+                   ("hitmen" in team_lower and ("hitmen" in home_lower or "hitmen" in away_lower)):
                     team_scores.append(game)
+                    # Track the opponent
+                    if team_lower in home_lower or ("hitmen" in team_lower and "hitmen" in home_lower):
+                        played_opponents.add(away_lower)
+                    else:
+                        played_opponents.add(home_lower)
+
+        # Filter upcoming games - exclude games where we've already played the opponent
+        upcoming_games = []
+        for g in all_games:
+            opponent_lower = g.get("opponent", "").lower()
+            is_played = g.get("completed", False) or any(opp in opponent_lower or opponent_lower in opp for opp in played_opponents)
+            if not is_played:
+                upcoming_games.append(g)
+        upcoming_games = upcoming_games[:5]
+
+        # Get completed games (from schedule or inferred from scores)
+        completed_games = [g for g in all_games if g.get("completed", False) or
+                          any(opp in g.get("opponent", "").lower() or g.get("opponent", "").lower() in opp for opp in played_opponents)]
 
         # Build context for Claude
         total_teams = len(standings)

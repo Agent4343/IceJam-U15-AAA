@@ -577,13 +577,23 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
         html = response.text
         games = []
 
-        # Try to extract json variable with game data
-        # Use greedy match and look for ]]; or ]; at end to handle nested structures
-        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)', html)
+        # Try to extract json variable with game data using multiple possible variable names
+        # icejam.ca might use: json, jsonScores, scoresData, data, games, etc.
+        patterns = [
+            r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)',
+            r'json\s*=\s*(\[.*\]);',
+            r'(?:var|let|const)\s*(?:json|jsonScores|scoresData|data|games)\s*=\s*(\[[\s\S]*?\]);',
+            r'(?:json|jsonScores|scoresData)\s*=\s*(\[[\s\S]*?\]);',
+            r'=\s*(\[\s*\{[^}]*"h_n"[^}]*\}[\s\S]*?\]);',  # Look for array with h_n field (home name)
+            r'=\s*(\[\s*\{[^}]*"home"[^}]*\}[\s\S]*?\]);',  # Look for array with home field
+        ]
 
-        if not json_match:
-            # Try alternate pattern - greedy match up to ]];
-            json_match = re.search(r'json\s*=\s*(\[.*\]);', html, re.DOTALL)
+        json_match = None
+        for pattern in patterns:
+            json_match = re.search(pattern, html, re.DOTALL)
+            if json_match:
+                logger.info(f"Found JSON match with pattern: {pattern[:50]}...")
+                break
 
         if json_match:
             try:
@@ -638,6 +648,11 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
                 logger.error(f"JSON string preview: {json_str[:500] if 'json_str' in locals() else 'N/A'}")
         else:
             logger.warning(f"No json variable found in scores page HTML (length: {len(html)})")
+            # Log script tag contents for debugging
+            script_matches = re.findall(r'<script[^>]*>([\s\S]*?)</script>', html, re.IGNORECASE)
+            for i, script in enumerate(script_matches[:3]):  # First 3 scripts
+                if len(script.strip()) > 10:
+                    logger.debug(f"Script {i}: {script[:200]}...")
 
         return {
             "ok": True,
@@ -1376,19 +1391,53 @@ def debug_scores():
 
         html = response.text
 
-        # Try to find JSON variable
-        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Try multiple patterns to find JSON variable
+        patterns = [
+            ("json=", r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)'),
+            ("json greedy", r'json\s*=\s*(\[.*\]);'),
+            ("named vars", r'(?:var|let|const)\s*(?:json|jsonScores|scoresData|data|games)\s*=\s*(\[[\s\S]*?\]);'),
+            ("h_n field", r'=\s*(\[\s*\{[^}]*"h_n"[^}]*\}[\s\S]*?\]);'),
+        ]
+
+        json_match = None
+        matched_pattern = None
+        for name, pattern in patterns:
+            json_match = re.search(pattern, html, re.DOTALL)
+            if json_match:
+                matched_pattern = name
+                break
 
         result = {
             "ok": True,
             "url": scores_url,
             "html_length": len(html),
             "json_found": bool(json_match),
+            "matched_pattern": matched_pattern,
         }
+
+        # Find all script tags for analysis
+        script_matches = re.findall(r'<script[^>]*>([\s\S]*?)</script>', html, re.IGNORECASE)
+        result["script_count"] = len(script_matches)
+        result["script_previews"] = [s[:150] for s in script_matches if len(s.strip()) > 20][:5]
 
         if json_match:
             try:
-                games_json = json_lib.loads(json_match.group(1))
+                json_str = json_match.group(1)
+                # Apply bracket counting to get clean JSON
+                bracket_count = 0
+                end_pos = 0
+                for i, char in enumerate(json_str):
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            end_pos = i + 1
+                            break
+                if end_pos > 0:
+                    json_str = json_str[:end_pos]
+
+                games_json = json_lib.loads(json_str)
                 result["total_games"] = len(games_json)
                 # Show first 3 games as sample
                 result["sample_games"] = games_json[:3] if games_json else []

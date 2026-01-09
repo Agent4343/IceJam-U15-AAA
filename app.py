@@ -51,6 +51,19 @@ DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 GAMESHEET_SEASON_ID = "12816"
 GAMESHEET_BASE = "https://gamesheetstats.com"
 
+# Team name mapping: Short name -> Full name (from icejam.ca registration)
+TEAM_FULL_NAMES = {
+    "Eastern Hitmen": "Eastern Hitmen, PE",
+    "Caps": "Fredericton Mitsubishi Caps, NB",
+    # Add more team mappings here as needed
+    # "Short Name": "Full Name, Province",
+}
+
+
+def get_full_team_name(short_name: str) -> str:
+    """Get full team name from mapping, or return original if not found"""
+    return TEAM_FULL_NAMES.get(short_name, short_name)
+
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000
 

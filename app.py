@@ -1765,6 +1765,10 @@ def ai_analysis(
         goal_diff = team_data['gf'] - team_data['ga']
         goal_diff_str = f"+{goal_diff}" if goal_diff >= 0 else str(goal_diff)
 
+        # Calculate goal average (tournament tiebreaker formula)
+        total_goals = team_data['gf'] + team_data['ga']
+        goal_avg = f"{team_data['gf']/total_goals:.3f}" if total_goals > 0 else "N/A"
+
         # Build recent games info
         if team_scores:
             recent_games_str = chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]])
@@ -1776,38 +1780,56 @@ def ai_analysis(
         # Build the prompt
         prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
 
-TOURNAMENT CONTEXT:
-- This is the ROUND ROBIN phase - teams are still playing their pool games
-- Current rankings are PRELIMINARY and will change as more games are played
-- Top 16 of {total_teams} teams will make playoffs after round robin ends
+=== TOURNAMENT RULES ===
+Format: {total_teams} teams in Round Robin, Top 16 make playoffs
+Points: Win=2pts, OT Win=2pts, OT Loss=1pt, Regulation Loss=0pts, Tie=1pt each
+Game Format: 15-15-20 minute periods, Round Robin OT is 5min 3v3 then tie
+Goal Diff Cap: Maximum +7 per game counts toward standings
 
-Current Standings (Round Robin in progress):
-- {team} is currently #{team_rank} of {total_teams} teams
-- Record: {team_data['w']}-{team_data['l']}-{team_data.get('otl', 0)} ({team_data['pts']} points)
-- Games played: {games_played} (round robin still ongoing)
-- Goals: {team_data['gf']} for, {team_data['ga']} against (Goal Diff: {goal_diff_str})
+Tiebreakers (in order):
+1. Head-to-head result
+2. Most wins
+3. Goal Average: GF/(GF+GA) - higher is better
+4. Fewest goals against
+5. Most goals for
+6. Fewest penalty minutes
+7. First goal in head-to-head
+8. Fastest first goal of tournament
 
-Nearby Teams in Standings:
+Playoffs: Top 16 qualify. Bracket: 1v16, 8v9, 2v15, 7v10, 3v14, 6v11, 4v13, 5v12
+Playoff OT: 10min 3v3, then shootout. Championship: continuous 20min periods.
+
+=== CURRENT STATUS ===
+Phase: ROUND ROBIN (preliminary standings - will change as more games played)
+{team} Current Position: #{team_rank} of {total_teams} teams
+Record: {team_data['w']}-{team_data['l']}-{team_data.get('otl', 0)} ({team_data['pts']} points)
+Games Played: {games_played}
+Goals: {team_data['gf']} for, {team_data['ga']} against (Diff: {goal_diff_str})
+Goal Average: {goal_avg}
+Playoff Position: {"Currently IN top 16" if in_playoff_position else f"Currently OUTSIDE - need to move up {team_rank - playoff_cutoff} spots"}
+
+Nearby Teams:
 {chr(10).join(nearby_teams)}
 
-Recent Games:
+Recent Results:
 {recent_games_str}
 
 Upcoming Games:
 {chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
 
-IMPORTANT RULES:
-- This is ROUND ROBIN - current ranking #{team_rank} is preliminary, not final
-- Rankings will change significantly as teams play more games
-- Focus on: record so far, goal differential, and upcoming matchups
-- Do NOT overstate their current ranking - it's early in the tournament
+=== ANALYSIS GUIDELINES ===
+- Round robin is ONGOING - rankings are preliminary and will shift
+- Don't overstate current position - many teams have played different numbers of games
+- Focus on: their record, goal differential, and importance of upcoming matchups
+- Mention playoff implications based on the rules above
+- Be realistic but encouraging
 
-Provide a brief (3-4 sentences) fan-friendly update:
-1. How they're doing so far in round robin (record, goals)
-2. What the upcoming games mean for their playoff positioning
-3. Keep it realistic - round robin is still in progress
+Provide a brief (3-4 sentences) fan-friendly analysis covering:
+1. Current round robin performance (record, goal scoring)
+2. Where they stand for playoffs and what they need
+3. Key upcoming games to watch
 
-Be accurate and don't exaggerate early round robin standings."""
+Be accurate and use the tournament rules above in your analysis."""
 
         # Call Claude API
         client = anthropic.Anthropic(api_key=api_key)

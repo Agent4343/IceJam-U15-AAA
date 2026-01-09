@@ -1776,14 +1776,18 @@ def ai_analysis(
         # Build the prompt
         prompt = f"""You are a hockey analyst providing a brief update for fans of {team} at the IceJam U15 AAA tournament.
 
-Current Standings:
-- {team} is ranked #{team_rank} of {total_teams} teams
-- Record: {team_data['w']} wins, {team_data['l']} losses, {team_data.get('otl', 0)} OT losses ({team_data['pts']} points)
-- Games played: {games_played}
-- Goals: {team_data['gf']} for, {team_data['ga']} against (Goal Diff: {goal_diff_str})
-- Playoff position: {"IN (Top 16 qualify)" if in_playoff_position else f"OUT (need to climb {team_rank - playoff_cutoff} spots)"}
+TOURNAMENT CONTEXT:
+- This is the ROUND ROBIN phase - teams are still playing their pool games
+- Current rankings are PRELIMINARY and will change as more games are played
+- Top 16 of {total_teams} teams will make playoffs after round robin ends
 
-Nearby Teams:
+Current Standings (Round Robin in progress):
+- {team} is currently #{team_rank} of {total_teams} teams
+- Record: {team_data['w']}-{team_data['l']}-{team_data.get('otl', 0)} ({team_data['pts']} points)
+- Games played: {games_played} (round robin still ongoing)
+- Goals: {team_data['gf']} for, {team_data['ga']} against (Goal Diff: {goal_diff_str})
+
+Nearby Teams in Standings:
 {chr(10).join(nearby_teams)}
 
 Recent Games:
@@ -1792,20 +1796,18 @@ Recent Games:
 Upcoming Games:
 {chr(10).join([f"{g['location']} {g['opponent']} - {g['date']} {g['time']}" for g in upcoming_games]) if upcoming_games else "No upcoming games found"}
 
-Tiebreaker Notes:
-{chr(10).join(tiebreakers[:5]) if tiebreakers else "No tiebreakers applied yet"}
+IMPORTANT RULES:
+- This is ROUND ROBIN - current ranking #{team_rank} is preliminary, not final
+- Rankings will change significantly as teams play more games
+- Focus on: record so far, goal differential, and upcoming matchups
+- Do NOT overstate their current ranking - it's early in the tournament
 
-IMPORTANT: Base your analysis ONLY on the data provided above. Do not make up information.
-- If they have wins, they HAVE played games
-- Focus on their current record, goal differential, and playoff position
-- Mention specific upcoming opponents if listed
+Provide a brief (3-4 sentences) fan-friendly update:
+1. How they're doing so far in round robin (record, goals)
+2. What the upcoming games mean for their playoff positioning
+3. Keep it realistic - round robin is still in progress
 
-Provide a brief (3-4 sentences) fan-friendly analysis covering:
-1. Current playoff position and record
-2. Goal scoring performance (based on GF/GA)
-3. What to watch for in upcoming games
-
-Keep it conversational and accurate. Use hockey terminology appropriately."""
+Be accurate and don't exaggerate early round robin standings."""
 
         # Call Claude API
         client = anthropic.Anthropic(api_key=api_key)

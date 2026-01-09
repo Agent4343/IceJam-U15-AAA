@@ -1121,6 +1121,12 @@ def scrape_schedule(team: str = DEFAULT_TEAM, league_id: str = None) -> Dict:
                     is_team_game = any(term in home or term in visitor for term in search_terms)
 
                     if is_team_game:
+                        # Check if game is completed (has final score or status is F/Final)
+                        home_score = int(game.get("hf", 0) or 0)
+                        away_score = int(game.get("vf", 0) or 0)
+                        game_status = str(game.get("gs", "")).upper()
+                        is_completed = game_status in ["F", "FINAL"] or (home_score > 0 or away_score > 0)
+
                         # Determine opponent and home/away
                         if any(term in home for term in search_terms):
                             opponent = game.get("v_n", "TBD")
@@ -1136,7 +1142,9 @@ def scrape_schedule(team: str = DEFAULT_TEAM, league_id: str = None) -> Dict:
                             "time": game.get("gt3", ""),
                             "date": game.get("gdl", ""),
                             "rink": game.get("rn", ""),
-                            "league": game.get("lg_n", "")
+                            "league": game.get("lg_n", ""),
+                            "completed": is_completed,
+                            "score": f"{home_score}-{away_score}" if is_completed else None
                         })
 
             except json_lib.JSONDecodeError as e:
@@ -1739,7 +1747,13 @@ def ai_analysis(
 
         # Get schedule for the team
         schedule_result = scrape_schedule(team, league)
-        upcoming_games = schedule_result.get("schedule", [])[:5] if schedule_result.get("ok") else []
+        all_games = schedule_result.get("schedule", []) if schedule_result.get("ok") else []
+
+        # Filter to only UPCOMING games (not completed)
+        upcoming_games = [g for g in all_games if not g.get("completed", False)][:5]
+
+        # Get completed games for recent results
+        completed_games = [g for g in all_games if g.get("completed", False)]
 
         # Get recent scores
         scores_result = fetch_game_scores(league, season)
@@ -1769,9 +1783,17 @@ def ai_analysis(
         total_goals = team_data['gf'] + team_data['ga']
         goal_avg = f"{team_data['gf']/total_goals:.3f}" if total_goals > 0 else "N/A"
 
-        # Build recent games info
-        if team_scores:
-            recent_games_str = chr(10).join([f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}" for g in team_scores[:3]])
+        # Build recent games info - use completed games from schedule or team_scores
+        if completed_games:
+            recent_games_str = chr(10).join([
+                f"{g['location']} {g['opponent']}: {g['score']} ({'W' if team_data['w'] > 0 else 'L/T'})"
+                for g in completed_games[:3]
+            ])
+        elif team_scores:
+            recent_games_str = chr(10).join([
+                f"vs {g['away'] if team.lower() in g['home'].lower() else g['home']}: {g['home_score']}-{g['away_score']}"
+                for g in team_scores[:3]
+            ])
         elif games_played > 0:
             recent_games_str = f"Played {games_played} game(s) - detailed scores not available"
         else:

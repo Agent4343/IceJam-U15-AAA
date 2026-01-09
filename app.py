@@ -567,60 +567,34 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
     """Fetch game scores from icejam.ca for tiebreaker calculations"""
     try:
         lg = league_id or DEFAULT_LEAGUE
+        games = []
 
-        # Fetch scores from the scores page with league filter
-        scores_url = f"{BASE}/scores/?lg={lg}"
-        logger.info(f"Fetching scores from {scores_url}")
-        response = requests.get(scores_url, headers=HEADERS, timeout=10)
+        # First try the schedule endpoint which reliably contains game data with scores
+        schedule_url = f"{SCHEDULE_URL}?lg={lg}"
+        logger.info(f"Fetching scores from schedule: {schedule_url}")
+        response = requests.get(schedule_url, headers=HEADERS, timeout=10)
         response.raise_for_status()
 
         html = response.text
-        games = []
 
-        # Try to extract json variable with game data
-        # Use greedy match and look for ]]; or ]; at end to handle nested structures
-        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)', html)
-
-        if not json_match:
-            # Try alternate pattern - greedy match up to ]];
-            json_match = re.search(r'json\s*=\s*(\[.*\]);', html, re.DOTALL)
+        # Extract json variable from schedule page (same pattern that works for schedule)
+        json_match = re.search(r'json\s*=\s*(\[.*?\]);', html, re.DOTALL)
 
         if json_match:
             try:
-                json_str = json_match.group(1)
-                # Clean up any trailing content after the array
-                bracket_count = 0
-                end_pos = 0
-                for i, char in enumerate(json_str):
-                    if char == '[':
-                        bracket_count += 1
-                    elif char == ']':
-                        bracket_count -= 1
-                        if bracket_count == 0:
-                            end_pos = i + 1
-                            break
-                if end_pos > 0:
-                    json_str = json_str[:end_pos]
-
-                games_json = json_lib.loads(json_str)
-                logger.info(f"Found {len(games_json)} total games in scores JSON")
+                games_json = json_lib.loads(json_match.group(1))
+                logger.info(f"Found {len(games_json)} total games in schedule JSON for scores")
 
                 for game in games_json:
-                    # Filter by league (try multiple field names)
-                    game_league = str(game.get("lg", game.get("league", "")))
+                    home_team = game.get("h_n", "")
+                    away_team = game.get("v_n", "")
+                    # hf = home final score, vf = visitor final score
+                    home_score = int(game.get("hf", 0) or 0)
+                    away_score = int(game.get("vf", 0) or 0)
+                    game_status = str(game.get("gs", "")).upper()
 
-                    # Include game if league matches OR if no league filter in data
-                    if game_league and game_league != lg:
-                        continue
-
-                    home_team = game.get("h_n", game.get("home", ""))
-                    away_team = game.get("v_n", game.get("away", ""))
-                    home_score = int(game.get("hf", game.get("home_score", 0)) or 0)
-                    away_score = int(game.get("vf", game.get("away_score", 0)) or 0)
-                    game_status = str(game.get("gs", game.get("status", ""))).upper()
-
-                    # Include completed games (F, Final) or games with scores
-                    is_completed = game_status in ["F", "FINAL", ""] or (home_score > 0 or away_score > 0)
+                    # Include completed games (status F/Final) or games with scores
+                    is_completed = game_status in ["F", "FINAL"] or (home_score > 0 or away_score > 0)
 
                     if home_team and away_team and is_completed:
                         games.append({
@@ -628,16 +602,15 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
                             "away": away_team,
                             "home_score": home_score,
                             "away_score": away_score,
-                            "ot": "OT" in str(game.get("gp", game.get("period", ""))),
-                            "game_num": game.get("gn", game.get("game_num", "")),
+                            "ot": "OT" in str(game.get("gp", "")),
+                            "game_num": game.get("gn", ""),
                         })
 
-                logger.info(f"Filtered to {len(games)} completed games for league {lg}")
+                logger.info(f"Found {len(games)} completed games with scores")
             except json_lib.JSONDecodeError as e:
-                logger.error(f"JSON parse error in scores: {e}")
-                logger.error(f"JSON string preview: {json_str[:500] if 'json_str' in locals() else 'N/A'}")
+                logger.error(f"JSON parse error in schedule/scores: {e}")
         else:
-            logger.warning(f"No json variable found in scores page HTML (length: {len(html)})")
+            logger.warning(f"No json variable found in schedule page for scores")
 
         return {
             "ok": True,
@@ -1376,19 +1349,53 @@ def debug_scores():
 
         html = response.text
 
-        # Try to find JSON variable
-        json_match = re.search(r'(?:var|let|const)?\s*json\s*=\s*(\[.*?\]);', html, re.DOTALL)
+        # Try multiple patterns to find JSON variable
+        patterns = [
+            ("json=", r'(?:var|let|const)?\s*json\s*=\s*(\[[\s\S]*?\])(?:;|\s*$)'),
+            ("json greedy", r'json\s*=\s*(\[.*\]);'),
+            ("named vars", r'(?:var|let|const)\s*(?:json|jsonScores|scoresData|data|games)\s*=\s*(\[[\s\S]*?\]);'),
+            ("h_n field", r'=\s*(\[\s*\{[^}]*"h_n"[^}]*\}[\s\S]*?\]);'),
+        ]
+
+        json_match = None
+        matched_pattern = None
+        for name, pattern in patterns:
+            json_match = re.search(pattern, html, re.DOTALL)
+            if json_match:
+                matched_pattern = name
+                break
 
         result = {
             "ok": True,
             "url": scores_url,
             "html_length": len(html),
             "json_found": bool(json_match),
+            "matched_pattern": matched_pattern,
         }
+
+        # Find all script tags for analysis
+        script_matches = re.findall(r'<script[^>]*>([\s\S]*?)</script>', html, re.IGNORECASE)
+        result["script_count"] = len(script_matches)
+        result["script_previews"] = [s[:150] for s in script_matches if len(s.strip()) > 20][:5]
 
         if json_match:
             try:
-                games_json = json_lib.loads(json_match.group(1))
+                json_str = json_match.group(1)
+                # Apply bracket counting to get clean JSON
+                bracket_count = 0
+                end_pos = 0
+                for i, char in enumerate(json_str):
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            end_pos = i + 1
+                            break
+                if end_pos > 0:
+                    json_str = json_str[:end_pos]
+
+                games_json = json_lib.loads(json_str)
                 result["total_games"] = len(games_json)
                 # Show first 3 games as sample
                 result["sample_games"] = games_json[:3] if games_json else []

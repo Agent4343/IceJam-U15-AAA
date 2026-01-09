@@ -47,6 +47,10 @@ SCHEDULE_URL = f"{BASE}/schedule/"
 DEFAULT_TEAM = "Eastern Hitmen"
 DEFAULT_LEAGUE = "500226"  # IceJam U15 league ID (Eastern Hitmen's league)
 
+# GameSheet Stats for detailed player statistics
+GAMESHEET_SEASON_ID = "12816"
+GAMESHEET_BASE = "https://gamesheetstats.com"
+
 # Multiplier for tournament time calculation (ensures game order takes precedence over time within game)
 TOURNAMENT_TIME_MULTIPLIER = 100000
 
@@ -629,6 +633,76 @@ def fetch_game_scores(league_id: str = None, season: str = "2025") -> Dict:
         return {"ok": False, "error": str(e), "games": []}
 
 
+def fetch_gamesheet_scores(season_id: str = None) -> Dict:
+    """Fetch detailed game scores with player stats from GameSheet Stats"""
+    try:
+        sid = season_id or GAMESHEET_SEASON_ID
+        scores_url = f"{GAMESHEET_BASE}/seasons/{sid}/scores"
+        logger.info(f"Fetching GameSheet scores from {scores_url}")
+
+        # Use headers that mimic a browser
+        gs_headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+        }
+
+        response = requests.get(scores_url, headers=gs_headers, timeout=15)
+        response.raise_for_status()
+
+        html = response.text
+        games = []
+
+        # Try to find game data in the HTML
+        # GameSheet typically embeds JSON data or has structured HTML tables
+        soup = BeautifulSoup(html, 'lxml')
+
+        # Look for game cards/rows
+        game_elements = soup.find_all(['div', 'tr'], class_=lambda x: x and ('game' in x.lower() or 'score' in x.lower() or 'match' in x.lower()))
+
+        logger.info(f"Found {len(game_elements)} potential game elements in GameSheet HTML")
+
+        # Try to extract JSON data if embedded
+        scripts = soup.find_all('script')
+        for script in scripts:
+            if script.string and ('games' in script.string or 'scores' in script.string):
+                # Try to extract JSON
+                json_match = re.search(r'(?:games|scores)\s*[=:]\s*(\[[\s\S]*?\])', script.string)
+                if json_match:
+                    try:
+                        games_data = json_lib.loads(json_match.group(1))
+                        logger.info(f"Found {len(games_data)} games in GameSheet JSON")
+                        for g in games_data:
+                            games.append({
+                                "home": g.get("homeTeam", {}).get("name", ""),
+                                "away": g.get("awayTeam", {}).get("name", ""),
+                                "home_score": g.get("homeScore", 0),
+                                "away_score": g.get("awayScore", 0),
+                                "goals": g.get("goals", []),
+                                "assists": g.get("assists", []),
+                            })
+                    except:
+                        pass
+
+        return {
+            "ok": True,
+            "source": "gamesheet",
+            "games_found": len(games),
+            "games": games,
+            "html_length": len(html)
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"GameSheet fetch error: {e}")
+        return {"ok": False, "error": str(e), "games": []}
+
+
 def apply_tiebreakers_to_live(standings: List[Dict], games: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
     """
     Apply tournament tiebreaker rules to live standings data.
@@ -1192,6 +1266,14 @@ def get_scores(
 ):
     """Get game scores for tiebreaker calculations"""
     return fetch_game_scores(league, season)
+
+
+@app.get("/api/gamesheet-scores")
+def get_gamesheet_scores(
+    season_id: str = Query(None, description="GameSheet season ID")
+):
+    """Get detailed game scores with player stats from GameSheet"""
+    return fetch_gamesheet_scores(season_id)
 
 
 @app.get("/api/playoff-bracket")

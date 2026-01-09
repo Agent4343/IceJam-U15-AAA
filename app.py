@@ -30,7 +30,6 @@ from typing import Optional, Dict, List, Tuple
 from functools import cmp_to_key
 
 import requests
-import anthropic
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
@@ -1598,6 +1597,9 @@ def ai_analysis(
             "ok": False,
             "error": "ANTHROPIC_API_KEY not configured. Set this environment variable in Railway."
         }
+
+    # Import anthropic only when needed (avoids build-time issues)
+    import anthropic
 
     try:
         # Get current standings with tiebreakers

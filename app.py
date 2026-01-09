@@ -1846,12 +1846,17 @@ Upcoming Games:
 - Mention playoff implications based on the rules above
 - Be realistic but encouraging
 
+CRITICAL: Use ONLY the EXACT team names listed above. Do NOT invent or make up team names.
+- If upcoming games show "vs S Rangers" - say "S Rangers", not "South Rangers" or other variations
+- If no upcoming games are listed, say "schedule details not available"
+- Never hallucinate team names that aren't in the data above
+
 Provide a brief (3-4 sentences) fan-friendly analysis covering:
 1. Current round robin performance (record, goal scoring)
 2. Where they stand for playoffs and what they need
-3. Key upcoming games to watch
+3. Key upcoming games (using EXACT team names from above)
 
-Be accurate and use the tournament rules above in your analysis."""
+Be accurate. Only use information provided above."""
 
         # Call Claude API
         client = anthropic.Anthropic(api_key=api_key)

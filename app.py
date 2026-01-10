@@ -1313,7 +1313,7 @@ def playoff_bracket():
     - Semi-Finals (SF1-SF2): Winners re-seeded
     - Final: Championship game
     """
-    standings_result = scrape_icejam()
+    standings_result = scrape_icejam_with_tiebreakers()
 
     if not standings_result.get("ok") or not standings_result.get("standings"):
         return {

@@ -97,6 +97,15 @@ th { color:#9fb0cf; font-weight:500; }
     </div>
   </div>
 
+  <!-- Playoff Matchups -->
+  <div class="card">
+    <div class="card-title">Playoff Matchups</div>
+    <button onclick="fetchPlayoffBracket()" style="background:#6366f1;">Show Playoff Bracket</button>
+    <div id="bracket-result">
+      <div class="small" style="margin-top:10px;">See projected Round of 16 matchups based on current standings</div>
+    </div>
+  </div>
+
   <!-- AI Analysis -->
   <div class="card">
     <div class="card-title">AI Analysis</div>
@@ -381,6 +390,75 @@ async function fetchAIAnalysis() {
       result.innerHTML = html;
     } else {
       result.innerHTML = `<div class="msg error">${d.error || 'Failed to get AI analysis'}</div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
+}
+
+async function fetchPlayoffBracket() {
+  const result = document.getElementById("bracket-result");
+  const tracked = document.getElementById("track-team").value || "Eastern Hitmen";
+  const trackedLower = tracked.toLowerCase();
+
+  result.innerHTML = '<div class="msg info">Loading playoff bracket...</div>';
+
+  try {
+    const r = await fetch('/api/playoff-bracket');
+    const d = await r.json();
+
+    if (d.ok && d.bracket && d.bracket.length > 0) {
+      let html = `<div class="small" style="margin:10px 0;">${d.teams_in_playoffs} teams qualify for playoffs (of ${d.teams_count} total)</div>`;
+
+      // Round of 16 header
+      html += '<div style="margin-top:12px;font-weight:600;color:#6366f1;font-size:13px;">Round of 16</div>';
+      html += '<table style="margin-top:8px;"><thead><tr><th>Game</th><th>High Seed</th><th>vs</th><th>Low Seed</th></tr></thead><tbody>';
+
+      d.bracket.forEach(m => {
+        // Highlight row if tracked team is in this matchup
+        const highTeam = m.high_seed ? m.high_seed.team : 'BYE';
+        const lowTeam = m.low_seed ? m.low_seed.team : 'BYE';
+        const isTrackedGame = highTeam.toLowerCase().includes(trackedLower) ||
+                              lowTeam.toLowerCase().includes(trackedLower) ||
+                              (trackedLower.includes('hitmen') && (highTeam.toLowerCase().includes('hitmen') || lowTeam.toLowerCase().includes('hitmen')));
+
+        const rowClass = isTrackedGame ? 'class="hitmen"' : '';
+
+        if (m.high_seed && m.low_seed) {
+          html += `<tr ${rowClass}>
+            <td style="color:#6366f1;font-weight:600;">${m.game}</td>
+            <td><b>#${m.high_seed.rank}</b> ${m.high_seed.team}<br><span class="small">${m.high_seed.record} (${m.high_seed.pts}pts)</span></td>
+            <td style="color:#9fb0cf;">vs</td>
+            <td><b>#${m.low_seed.rank}</b> ${m.low_seed.team}<br><span class="small">${m.low_seed.record} (${m.low_seed.pts}pts)</span></td>
+          </tr>`;
+        } else if (m.high_seed) {
+          html += `<tr ${rowClass}>
+            <td style="color:#6366f1;font-weight:600;">${m.game}</td>
+            <td><b>#${m.high_seed.rank}</b> ${m.high_seed.team}</td>
+            <td colspan="2" style="color:#4ade80;">BYE - Advances</td>
+          </tr>`;
+        }
+      });
+      html += '</tbody></table>';
+
+      // Future rounds preview
+      html += '<div style="margin-top:16px;padding:12px;background:#1a2538;border-radius:8px;">';
+      html += '<div style="font-size:13px;color:#9fb0cf;margin-bottom:8px;"><b>Bracket Flow:</b></div>';
+      html += '<div style="font-size:12px;color:#9fb0cf;line-height:1.6;">';
+      html += '<div><b style="color:#6366f1;">Quarter-Finals:</b> QF1: Winner PO2 vs Winner PO1 | QF2: Winner PO4 vs Winner PO3</div>';
+      html += '<div style="margin-left:85px;">QF3: Winner PO6 vs Winner PO5 | QF4: Winner PO8 vs Winner PO7</div>';
+      html += '<div style="margin-top:4px;"><b style="color:#6366f1;">Semi-Finals:</b> SF1: Winner QF2 vs Winner QF1 | SF2: Winner QF4 vs Winner QF3</div>';
+      html += '<div style="margin-top:4px;"><b style="color:#6366f1;">Final:</b> Winner SF2 vs Winner SF1</div>';
+      html += '</div></div>';
+
+      // Replacement seeding note
+      html += '<div class="small" style="margin-top:10px;padding:8px;background:#4da3ff22;border-radius:6px;color:#4da3ff;">';
+      html += '<b>Replacement Seeding:</b> If a lower seed beats a higher seed, the winner takes over the higher seed\'s ranking.';
+      html += '</div>';
+
+      result.innerHTML = html;
+    } else {
+      result.innerHTML = `<div class="msg error">${d.error || 'Could not load playoff bracket'}</div>`;
     }
   } catch (e) {
     result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;

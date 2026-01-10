@@ -441,20 +441,8 @@ async function fetchPlayoffBracket() {
       });
       html += '</tbody></table>';
 
-      // Future rounds preview
-      html += '<div style="margin-top:16px;padding:12px;background:#1a2538;border-radius:8px;">';
-      html += '<div style="font-size:13px;color:#9fb0cf;margin-bottom:8px;"><b>Bracket Flow:</b></div>';
-      html += '<div style="font-size:12px;color:#9fb0cf;line-height:1.6;">';
-      html += '<div><b style="color:#6366f1;">Quarter-Finals:</b> QF1: Winner PO2 vs Winner PO1 | QF2: Winner PO4 vs Winner PO3</div>';
-      html += '<div style="margin-left:85px;">QF3: Winner PO6 vs Winner PO5 | QF4: Winner PO8 vs Winner PO7</div>';
-      html += '<div style="margin-top:4px;"><b style="color:#6366f1;">Semi-Finals:</b> SF1: Winner QF2 vs Winner QF1 | SF2: Winner QF4 vs Winner QF3</div>';
-      html += '<div style="margin-top:4px;"><b style="color:#6366f1;">Final:</b> Winner SF2 vs Winner SF1</div>';
-      html += '</div></div>';
-
-      // Replacement seeding note
-      html += '<div class="small" style="margin-top:10px;padding:8px;background:#4da3ff22;border-radius:6px;color:#4da3ff;">';
-      html += '<b>Replacement Seeding:</b> If a lower seed beats a higher seed, the winner takes over the higher seed\'s ranking.';
-      html += '</div>';
+      // Link to full rules
+      html += '<div class="small" style="margin-top:10px;"><a href="/rules" style="color:#4da3ff;">See full bracket & rules →</a></div>';
 
       result.innerHTML = html;
     } else {

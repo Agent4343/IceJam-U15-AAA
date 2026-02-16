@@ -376,6 +376,36 @@ def delete_game(game_id: str):
     return {"ok": True, "deleted": game_id}
 
 
+@app.post("/api/games/bulk")
+def add_games_bulk(games: List[GameInput]):
+    """Add multiple game results at once (for importing from Spordle or seed data)."""
+    results = []
+    for game in games:
+        game_id = str(uuid.uuid4())[:8]
+        game_number = len(games_db) + 1
+
+        new_game = Game(
+            game_id=game_id,
+            team_a=norm(game.team_a),
+            team_b=norm(game.team_b),
+            goals_a=game.goals_a,
+            goals_b=game.goals_b,
+            ot=game.ot,
+            pim_a=game.pim_a,
+            pim_b=game.pim_b,
+            first_goal_team=game.first_goal_team.lower() if game.first_goal_team else "",
+            first_goal_time_sec=game.first_goal_time_sec,
+            game_number=game_number,
+            franc_jeu_a=game.franc_jeu_a,
+            franc_jeu_b=game.franc_jeu_b,
+            division=norm(game.division),
+        )
+        games_db[game_id] = new_game
+        results.append({"game_id": game_id, "team_a": new_game.team_a, "team_b": new_game.team_b})
+
+    return {"ok": True, "imported": len(results), "games": results}
+
+
 @app.delete("/api/games")
 def clear_games():
     """Clear all games."""

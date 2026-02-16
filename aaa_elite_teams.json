@@ -1,0 +1,44 @@
+{
+  "tournament": "Tournoi International de Hockey M15 du Grand Montréal 2026",
+  "division": "AAA-Elite",
+  "spordle_url": "https://page.spordle.com/tournoi-international-de-hockey-m15-du-grand-montreal/schedule-stats-standings/0b7dd40b-e3bf-4b03-8a2a-9c7060714a65?scheduleId=186656",
+  "dates": "February 12-22, 2026",
+  "venue": "Place Bell / Enclav / Complexe Sportif Guimond, Laval",
+  "format": "Round robin followed by playoffs (1/8, QF, SF, Finals). Teams ranked 1-16. Replacement seeding for all playoff games.",
+  "teams": [
+    "Laval Rocket Jr",
+    "Adirondack Jr Wings",
+    "Sherbrooke Harfangs",
+    "Petits Canadiens",
+    "Korea Zenith Avengers",
+    "Montreal National",
+    "Nord Selects",
+    "Quebec As",
+    "Quebec Blizzard",
+    "Mauricie Estacades",
+    "Lanaudiere Pionniers",
+    "Lac St-Louis Lions",
+    "Outaouais Intrepide",
+    "Cascades Bois-Francs",
+    "Mortagne Noir et Or",
+    "Rive-Sud Coll. Francais"
+  ],
+  "notes": [
+    "Petits Canadiens = Ecole Fadette Vert et Noir (Saint-Hyacinthe), playing under Montreal Canadiens colors",
+    "Korea Zenith Avengers = International team from South Korea",
+    "Adirondack Jr Wings = International team from New York, USA",
+    "Teams qualified via LHEQ (Ligue de Hockey d'Excellence du Quebec) obligatory tournament",
+    "Team list is approximate - verify against Spordle page for exact roster of teams"
+  ],
+  "schedule_highlights": {
+    "opening_game": "Feb 12, 8:00 PM - Adirondack Jr Wings vs Laval Rocket Jr (Enclav community ice)",
+    "place_bell_feb15": [
+      "1:00 PM - Laval Rocket Jr vs Adirondack Jr Wings (AAA-Elite)",
+      "6:45 PM - Sherbrooke Harfangs vs Petits Canadiens (AAA-Elite)"
+    ],
+    "place_bell_feb22": [
+      "AAA-Elite Semi-Finals (morning)",
+      "AAA-Elite Final (afternoon/evening - tournament closer)"
+    ]
+  }
+}

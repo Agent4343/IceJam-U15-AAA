@@ -159,6 +159,28 @@ label { display:block; font-size:13px; color:#9fb0cf; margin-bottom:4px; margin-
     </div>
   </div>
 
+  <!-- Import Games from JSON -->
+  <div class="card">
+    <div class="card-title">Import Games from Spordle / JSON</div>
+    <button class="toggle-btn" onclick="toggleUpload()">+ Upload JSON File</button>
+
+    <div id="upload-section" class="game-entry">
+      <div class="small" style="margin:8px 0;">
+        Upload a JSON file with game results. Format: array of objects with team_a, team_b, goals_a, goals_b, division, etc.
+        <br><br>
+        <b>How to export from Spordle:</b><br>
+        1. Open the <a href="https://page.spordle.com/tournoi-international-de-hockey-m15-du-grand-montreal/schedule-stats-standings/0b7dd40b-e3bf-4b03-8a2a-9c7060714a65?scheduleId=186656" target="_blank" style="color:#4da3ff;">Spordle AAA-Elite page</a><br>
+        2. Open DevTools (F12) &rarr; Network tab &rarr; filter XHR<br>
+        3. Copy the games JSON data &rarr; save as .json file<br>
+        4. Upload here
+      </div>
+
+      <input type="file" id="upload-file" accept=".json" style="margin:8px 0;">
+      <button onclick="uploadJSON()">Upload &amp; Import</button>
+      <div id="upload-status"></div>
+    </div>
+  </div>
+
   <!-- Recent Games -->
   <div class="card">
     <div class="card-title">Recent Games</div>
@@ -396,6 +418,46 @@ async function loadGames() {
     }
   } catch (e) {
     result.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
+}
+
+function toggleUpload() {
+  const el = document.getElementById('upload-section');
+  el.classList.toggle('open');
+}
+
+async function uploadJSON() {
+  const status = document.getElementById("upload-status");
+  const fileInput = document.getElementById("upload-file");
+
+  if (!fileInput.files.length) {
+    status.innerHTML = '<div class="msg error">Select a JSON file first</div>';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  status.innerHTML = '<div class="msg info">Uploading and importing...</div>';
+
+  try {
+    const r = await fetch('/api/games/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const d = await r.json();
+
+    if (d.ok) {
+      let msg = `Imported ${d.imported} game(s)`;
+      if (d.errors > 0) msg += ` (${d.errors} errors)`;
+      status.innerHTML = `<div class="msg success">${msg}</div>`;
+      fileInput.value = '';
+      loadStandings();
+    } else {
+      status.innerHTML = `<div class="msg error">${d.detail || 'Upload failed'}</div>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
   }
 }
 

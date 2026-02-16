@@ -41,11 +41,12 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
 from functools import cmp_to_key
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from pydantic import BaseModel, Field, field_validator
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -404,6 +405,71 @@ def add_games_bulk(games: List[GameInput]):
         results.append({"game_id": game_id, "team_a": new_game.team_a, "team_b": new_game.team_b})
 
     return {"ok": True, "imported": len(results), "games": results}
+
+
+@app.post("/api/games/upload")
+async def upload_games(file: UploadFile = File(...)):
+    """Upload a JSON file of game results. Accepts a JSON array of game objects."""
+    if not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Only .json files are accepted")
+
+    try:
+        content = await file.read()
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+
+    games_list = data if isinstance(data, list) else data.get("games", [])
+    if not games_list:
+        raise HTTPException(status_code=400, detail="No games found in file")
+
+    results = []
+    errors = []
+    for i, g in enumerate(games_list):
+        try:
+            game_input = GameInput(
+                team_a=g.get("team_a", ""),
+                team_b=g.get("team_b", ""),
+                goals_a=g.get("goals_a", 0),
+                goals_b=g.get("goals_b", 0),
+                ot=g.get("ot", False),
+                pim_a=g.get("pim_a", 0),
+                pim_b=g.get("pim_b", 0),
+                first_goal_team=g.get("first_goal_team", ""),
+                first_goal_time_sec=g.get("first_goal_time_sec"),
+                franc_jeu_a=g.get("franc_jeu_a", 0),
+                franc_jeu_b=g.get("franc_jeu_b", 0),
+                division=g.get("division", "AAA-Elite"),
+            )
+            game_id = str(uuid.uuid4())[:8]
+            game_number = len(games_db) + 1
+            new_game = Game(
+                game_id=game_id,
+                team_a=norm(game_input.team_a),
+                team_b=norm(game_input.team_b),
+                goals_a=game_input.goals_a,
+                goals_b=game_input.goals_b,
+                ot=game_input.ot,
+                pim_a=game_input.pim_a,
+                pim_b=game_input.pim_b,
+                first_goal_team=game_input.first_goal_team.lower() if game_input.first_goal_team else "",
+                first_goal_time_sec=game_input.first_goal_time_sec,
+                game_number=game_number,
+                franc_jeu_a=game_input.franc_jeu_a,
+                franc_jeu_b=game_input.franc_jeu_b,
+                division=norm(game_input.division),
+            )
+            games_db[game_id] = new_game
+            results.append(game_id)
+        except Exception as e:
+            errors.append({"index": i, "error": str(e)})
+
+    return {
+        "ok": True,
+        "imported": len(results),
+        "errors": len(errors),
+        "error_details": errors[:10],
+    }
 
 
 @app.delete("/api/games")

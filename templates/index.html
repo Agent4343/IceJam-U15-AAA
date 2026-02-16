@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IceJam U15 AAA</title>
+<title>Tournoi International Laval 2026</title>
 
 <style>
 body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; background:#0b0f17; color:#fff; }
@@ -45,8 +45,8 @@ th { color:#9fb0cf; font-weight:500; }
 <div class="container">
   <div class="header">
     <div>
-      <h1>IceJam U15 AAA</h1>
-      <div class="small">Eastern Hitmen Standings Tracker</div>
+      <h1>Tournoi International Laval 2026</h1>
+      <div class="small">Grand Montreal International U15 - Standings Tracker</div>
     </div>
     <div class="header-links">
       <a href="/rules">Rules</a>
@@ -72,7 +72,7 @@ th { color:#9fb0cf; font-weight:500; }
 
     <label class="rules-toggle">
       <input type="checkbox" id="apply-rules" checked onchange="toggleRules()">
-      <span id="rules-label">Apply Tournament Tiebreaker Rules</span>
+      <span id="rules-label">Apply Hockey Quebec Tiebreaker Rules</span>
     </label>
 
     <div id="live-status"></div>
@@ -102,7 +102,7 @@ th { color:#9fb0cf; font-weight:500; }
     <div class="card-title">AI Analysis</div>
     <button onclick="fetchAIAnalysis()" style="background:#4da3ff;">Get AI Insights</button>
     <div id="ai-result">
-      <div class="small" style="margin-top:10px;">Get AI-powered analysis of your team's playoff situation</div>
+      <div class="small" style="margin-top:10px;">Get AI-powered analysis of your team's tournament situation</div>
     </div>
   </div>
 </div>
@@ -117,10 +117,10 @@ function toggleRules() {
   applyRules = document.getElementById('apply-rules').checked;
   const label = document.getElementById('rules-label');
   if (applyRules) {
-    label.textContent = 'Apply Tournament Tiebreaker Rules';
+    label.textContent = 'Apply Hockey Quebec Tiebreaker Rules';
     label.style.color = '#4ade80';
   } else {
-    label.textContent = 'Using icejam.ca default order';
+    label.textContent = 'Using default order';
     label.style.color = '#f87171';
   }
   if (liveStandings.length > 0) {
@@ -142,7 +142,7 @@ function renderStandingsTable() {
   let html = '';
 
   if (currentView === 'overview') {
-    html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>OTL</th><th>PTS</th><th>GF</th><th>GA</th></tr></thead><tbody>';
+    html = '<table><thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>PTS</th><th>GF</th><th>GA</th></tr></thead><tbody>';
     liveStandings.forEach((t, i) => {
       html += `<tr data-team="${t.team}">
         <td>${i+1}</td>
@@ -150,7 +150,7 @@ function renderStandingsTable() {
         <td>${t.gp}</td>
         <td>${t.w}</td>
         <td>${t.l}</td>
-        <td>${t.otl}</td>
+        <td>${t.t || 0}</td>
         <td><b>${t.pts}</b></td>
         <td>${t.gf}</td>
         <td>${t.ga}</td>
@@ -181,7 +181,7 @@ function renderStandingsTable() {
     let tbHtml = '<details style="margin-top:12px;"><summary style="cursor:pointer;color:#4da3ff;font-size:13px;">Tiebreaker Calculations (' + liveTiebreakers.length + ')</summary>';
     tbHtml += '<div style="background:#1a2538;padding:10px;margin-top:5px;border-radius:8px;font-size:12px;">';
     liveTiebreakers.forEach((tb, i) => {
-      const color = tb.includes('TB1') ? '#4ade80' : (tb.includes('TIED') ? '#f87171' : '#9fb0cf');
+      const color = tb.includes('TB-b') || tb.includes('TB-c') || tb.includes('TB-d') ? '#4ade80' : (tb.includes('TB-g') ? '#f87171' : '#9fb0cf');
       tbHtml += `<div style="margin:3px 0;color:${color};">${i+1}. ${tb}</div>`;
     });
     tbHtml += '</div></details>';
@@ -245,7 +245,7 @@ function highlightTracked() {
     const gd = teamData.gf - teamData.ga;
     const gdStr = gd >= 0 ? `+${gd}` : `${gd}`;
 
-    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.otl || 0} | ${teamData.pts} pts | GD: ${gdStr}`;
+    infoDiv.innerHTML = `<b>#${rank} of ${total}</b> | ${teamData.w}-${teamData.l}-${teamData.t || 0} | ${teamData.pts} pts | GD: ${gdStr}`;
     infoDiv.style.display = 'block';
   } else {
     infoDiv.style.display = 'none';
@@ -256,7 +256,7 @@ async function fetchLive() {
   const status = document.getElementById("live-status");
   const result = document.getElementById("live-result");
 
-  status.innerHTML = '<div class="msg info">Fetching from icejam.ca...</div>';
+  status.innerHTML = '<div class="msg info">Fetching standings...</div>';
   result.innerHTML = '';
 
   try {
@@ -268,7 +268,7 @@ async function fetchLive() {
       liveTiebreakers = d.tiebreaker_log || [];
 
       const seasonInfo = d.season ? `${d.season}/${parseInt(d.season)+1}` : '';
-      const rulesInfo = d.tiebreakers_applied ? ' | Rules Applied' : '';
+      const rulesInfo = d.tiebreakers_applied ? ' | Hockey QC Rules Applied' : '';
       const gamesInfo = d.games_used ? ` | ${d.games_used} games` : '';
 
       status.innerHTML = `<div class="msg success">${d.teams_found} teams | ${seasonInfo}${rulesInfo}${gamesInfo}</div>`;
@@ -342,8 +342,9 @@ async function fetchScores() {
                         (teamLower.includes('hitmen') && g.home.toLowerCase().includes('hitmen')) ||
                         (teamLower.includes('hitman') && g.home.toLowerCase().includes('hitman'));
           const won = isHome ? g.home_score > g.away_score : g.away_score > g.home_score;
-          const resultClass = won ? 'color:#4ade80;' : (g.home_score === g.away_score ? 'color:#fbbf24;' : 'color:#f87171;');
-          const resultText = won ? 'W' : (g.home_score === g.away_score ? 'T' : 'L');
+          const tied = g.home_score === g.away_score;
+          const resultClass = won ? 'color:#4ade80;' : (tied ? 'color:#fbbf24;' : 'color:#f87171;');
+          const resultText = won ? 'W' : (tied ? 'T' : 'L');
           const otText = g.ot ? ' (OT)' : '';
 
           html += `<tr>
@@ -377,11 +378,10 @@ async function fetchAIAnalysis() {
 
     if (d.ok && d.analysis) {
       let html = `<div style="margin-top:12px;padding:12px;background:#1a2538;border-radius:8px;font-size:14px;line-height:1.6;">`;
-      // Convert markdown-style formatting to HTML
       const formatted = d.analysis
         .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
         .replace(/\n\n/g, '</p><p>')
-        .replace(/\n- /g, '<br>• ')
+        .replace(/\n- /g, '<br>- ')
         .replace(/\n/g, '<br>');
       html += `<p>${formatted}</p>`;
       html += `</div>`;

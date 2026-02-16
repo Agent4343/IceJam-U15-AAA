@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tournament Rules - IceJam U15 AAA</title>
+<title>Tournament Rules - Grand Montreal International U15</title>
 
 <style>
 body { margin:0; font-family:-apple-system, BlinkMacSystemFont, sans-serif; background:#0b0f17; color:#fff; }
@@ -28,82 +28,90 @@ li { margin:6px 0; font-size:14px; line-height:1.5; }
 .tag { display:inline-block; background:#2a3350; padding:2px 8px; border-radius:4px; font-size:12px; margin-left:8px; }
 .tag.win { background:#1e8e3e33; color:#4ade80; }
 .tag.loss { background:#dc354533; color:#f87171; }
+.tag.fp { background:#4da3ff22; color:#4da3ff; }
+.section-note { font-size:12px; color:#9fb0cf; font-style:italic; margin-top:4px; }
 </style>
 </head>
 
 <body>
 <div class="container">
-  <h1>IceJam U15 AAA</h1>
-  <div class="small">2026 Tournament Rules & App Guide</div>
+  <h1>Tournoi International Laval 2026</h1>
+  <div class="small">Grand Montreal International U15 Hockey Tournament - Rules</div>
+  <div class="small">Sanctioned by Hockey Quebec | intm15.com</div>
 
   <div class="card">
-    <h2>How This App Works</h2>
-    <p style="font-size:14px;line-height:1.6;margin:0;">
-      This app tracks the <b>Eastern Hitmen</b> through the IceJam U15 AAA tournament.
-    </p>
+    <h2>Tournament Info</h2>
+    <table>
+      <tr><th>Detail</th><th>Info</th></tr>
+      <tr><td>Dates</td><td><b>February 12 - 22, 2026</b></td></tr>
+      <tr><td>Location</td><td>Laval / Montreal, QC</td></tr>
+      <tr><td>Teams</td><td>~100 teams</td></tr>
+      <tr><td>Website</td><td>intm15.com</td></tr>
+      <tr><td>Email</td><td>registration@intm15.com</td></tr>
+    </table>
+  </div>
 
-    <h3>Live Data</h3>
-    <ul>
-      <li><b>Fetch Standings</b> - Gets current standings from icejam.ca</li>
-      <li><b>Fetch Schedule</b> - Shows upcoming Hitmen games with dates, times, and rinks</li>
-    </ul>
-
-    <h3>What the App Calculates</h3>
-    <ul>
-      <li><b>Rankings</b> - Applies tournament tiebreaker rules to determine exact standings</li>
-      <li><b>Goal Average</b> - Tournament formula: GF / (GF + GA)</li>
-      <li><b>Goal Differential</b> - Shows +/- for tracked team</li>
-    </ul>
+  <div class="card">
+    <h2>Categories & Age Chart</h2>
+    <table>
+      <tr><th>Category</th><th>Date of Birth</th><th>Contact</th></tr>
+      <tr><td>AAA</td><td>Jan 1, 2011 - Dec 31, 2012</td><td>Progressive body checking</td></tr>
+      <tr><td>High School D1</td><td>Jan 1, 2012 - Dec 31, 2012</td><td>Progressive body checking</td></tr>
+      <tr><td>AAA-Elite</td><td>Oct 1, 2010 - Dec 31, 2012</td><td>Progressive body checking</td></tr>
+      <tr><td>AA</td><td>Oct 1, 2010 - Dec 31, 2012</td><td>Progressive body checking</td></tr>
+      <tr><td>BB</td><td>Oct 1, 2010 - Dec 31, 2012</td><td>Progressive body checking</td></tr>
+      <tr><td>AAA Women's</td><td>Oct 1, 2010 - Dec 31, 2012</td><td>Physical contact</td></tr>
+      <tr><td>AA Women's</td><td>Oct 1, 2010 - Dec 31, 2012</td><td>No contact</td></tr>
+    </table>
+    <p class="section-note">Article 7.3 of Hockey Quebec's administrative regulations</p>
   </div>
 
   <div class="card">
     <h2>Game Format</h2>
     <table>
+      <tr><th>Phase</th><th>Periods</th><th>Overtime</th></tr>
       <tr>
-        <th>Phase</th>
-        <th>Periods</th>
-        <th>Overtime</th>
+        <td>Pool (Round Robin)</td>
+        <td>12-12-15 min<br><span class="small">stop time</span></td>
+        <td>Tie stands (1 pt each)</td>
       </tr>
       <tr>
-        <td>Round Robin</td>
-        <td>15-15-20 min</td>
-        <td>5 min 3v3, then tie</td>
+        <td>Elimination<br><span class="small">(1/8, QF)</span></td>
+        <td>12-12-15 min<br><span class="small">stop time</span></td>
+        <td>5 min 3v3, then shootout</td>
       </tr>
       <tr>
-        <td>Playoffs</td>
-        <td>15-15-20 min</td>
+        <td>Semi-Finals & Finals</td>
+        <td>12-12-15 min<br><span class="small">stop time</span></td>
         <td>10 min 3v3, then shootout</td>
       </tr>
-      <tr>
-        <td>Championship</td>
-        <td>15-15-20 min</td>
-        <td>10 min 3v3, then 20 min periods</td>
-      </tr>
     </table>
+    <ul>
+      <li><b>Warm-up:</b> 3 minutes</li>
+      <li><b>Ice resurfacing:</b> Between 2nd and 3rd period</li>
+      <li>Locker rooms available 60 minutes before game</li>
+    </ul>
   </div>
 
   <div class="card">
     <h2>Points System</h2>
     <table>
-      <tr>
-        <th>Result</th>
-        <th>Winner</th>
-        <th>Loser</th>
-      </tr>
+      <tr><th>Result</th><th>Points</th></tr>
       <tr class="highlight">
-        <td>Regulation Win</td>
+        <td>Win</td>
         <td><b>2 pts</b> <span class="tag win">W</span></td>
+      </tr>
+      <tr>
+        <td>Tie</td>
+        <td>1 pt</td>
+      </tr>
+      <tr>
+        <td>Loss</td>
         <td>0 pts <span class="tag loss">L</span></td>
       </tr>
       <tr>
-        <td>Overtime Win</td>
-        <td><b>2 pts</b> <span class="tag win">OTW</span></td>
-        <td>1 pt <span class="tag">OTL</span></td>
-      </tr>
-      <tr>
-        <td>Tie (round robin)</td>
-        <td>1 pt</td>
-        <td>1 pt</td>
+        <td>Franc Jeu (Fair Play)</td>
+        <td>1 pt <span class="tag fp">FJ</span></td>
       </tr>
     </table>
   </div>
@@ -111,112 +119,157 @@ li { margin:6px 0; font-size:14px; line-height:1.5; }
   <div class="card">
     <h2>Key Rules</h2>
     <ul>
-      <li><b>Mercy Rule:</b> 6+ goal lead after 2nd period = running clock</li>
-      <li><b>Goal Differential Cap:</b> Max +7 per game for standings</li>
-      <li><b>Timeouts:</b> One 30-second timeout per game</li>
-      <li><b>Jerseys:</b> Home team wears white</li>
-      <li><b>No Protests:</b> Tournament committee decisions are final</li>
+      <li><b>Mercy Rule:</b> 7+ goal lead after 2nd period = running time for 3rd period (even if gap drops below 7). 2-min and 5-min penalties still timed.</li>
+      <li><b>Timeouts:</b> One 30-second timeout per game (regulation or overtime)</li>
+      <li><b>Jerseys:</b> Coin toss determines home/away. Visitor wears white, home wears dark.</li>
+      <li><b>Roster:</b> Max 20 players (18 + 1 or 2 goaltenders)</li>
+      <li><b>Minimum to play:</b> 10 players in uniform + 1 goaltender</li>
+      <li><b>Bench staff:</b> Max 5 accredited people behind the bench, max 6 total accredited per team</li>
+      <li><b>One team only:</b> A player cannot play for two different teams</li>
+      <li><b>Injured players:</b> Cannot sit on the team's bench</li>
+      <li><b>Gift exchange:</b> Only the 6 starters (including goaltender) return to ice</li>
     </ul>
   </div>
 
   <div class="card">
     <h2>Tiebreaker Rules</h2>
-    <p class="small">When teams are tied in points, go through these steps in order:</p>
+    <p class="small">Article 9.7 - Hockey Quebec Administrative Regulations</p>
+    <p class="small">The objective is to identify the best team among tied teams.</p>
 
-    <h3>Two Teams Tied</h3>
     <table>
-      <tr><td><span class="step">1</span>Head-to-head result</td></tr>
-      <tr><td><span class="step">2</span>Most wins</td></tr>
-      <tr><td><span class="step">3</span>Goal average (formula below)</td></tr>
-      <tr><td><span class="step">4</span>Fewest goals against</td></tr>
-      <tr><td><span class="step">5</span>Most goals for</td></tr>
-      <tr><td><span class="step">6</span>Fewest penalty minutes</td></tr>
-      <tr><td><span class="step">7</span>First goal in head-to-head game</td></tr>
-      <tr><td><span class="step">8</span>Fastest first goal of tournament</td></tr>
-      <tr><td><span class="step">9</span>Coin toss</td></tr>
+      <tr><td><span class="step">a</span>Highest number of points</td></tr>
+      <tr><td><span class="step">b</span>Highest number of wins</td></tr>
+      <tr><td><span class="step">c</span>Least goals against</td></tr>
+      <tr><td><span class="step">d</span>Most goals for</td></tr>
+      <tr><td><span class="step">e</span>Quickest goal scored in all games played</td></tr>
+      <tr><td><span class="step">f</span>Most Franc Jeu (Fair Play) points</td></tr>
+      <tr><td><span class="step">g</span>By a draw</td></tr>
     </table>
-
-    <h3>Three or More Teams Tied</h3>
-    <table>
-      <tr><td><span class="step">1</span>Record among tied teams only</td></tr>
-      <tr><td><span class="step">2</span>Most wins (among tied teams)</td></tr>
-      <tr><td><span class="step">3</span>Goal average (all games)</td></tr>
-      <tr><td><span class="step">4</span>Fewest goals against (all games)</td></tr>
-      <tr><td><span class="step">5</span>Most goals for (all games)</td></tr>
-      <tr><td><span class="step">6</span>Fewest penalty minutes</td></tr>
-      <tr><td><span class="step">7</span>Fastest first goal of tournament</td></tr>
-      <tr><td><span class="step">8</span>Coin toss (odd team out wins)</td></tr>
-    </table>
+    <p class="section-note">Note: If a team does not show up for a game, all games played against that team by other teams shall not be considered.</p>
   </div>
 
   <div class="card">
-    <h2>Goal Average Formula</h2>
-    <div class="formula">
-      Goal Average = Goals For / (Goals For + Goals Against)
-      <div class="example">
-        Example: 10 goals for, 4 against<br>
-        10 / (10 + 4) = 10/14 = <b>0.714</b><br><br>
-        Higher percentage = Higher rank
-      </div>
-    </div>
-  </div>
+    <h2>Overtime Rules</h2>
+    <p class="small">Article 9.6.1 - Hockey Quebec Administrative Regulations</p>
 
-  <div class="card">
-    <h2>Playoff Bracket</h2>
-    <p class="small">26 teams compete in round robin. Top 16 advance to playoffs.</p>
-    <h3>Round of 16</h3>
-    <table>
-      <tr><th>Game</th><th>Matchup</th></tr>
-      <tr><td>PO1</td><td><b>Rank 1</b> vs Rank 16</td></tr>
-      <tr><td>PO2</td><td><b>Rank 8</b> vs Rank 9</td></tr>
-      <tr><td>PO3</td><td><b>Rank 2</b> vs Rank 15</td></tr>
-      <tr><td>PO4</td><td><b>Rank 7</b> vs Rank 10</td></tr>
-      <tr><td>PO5</td><td><b>Rank 3</b> vs Rank 14</td></tr>
-      <tr><td>PO6</td><td><b>Rank 6</b> vs Rank 11</td></tr>
-      <tr><td>PO7</td><td><b>Rank 4</b> vs Rank 13</td></tr>
-      <tr><td>PO8</td><td><b>Rank 5</b> vs Rank 12</td></tr>
-    </table>
-    <h3>Quarter-Finals</h3>
-    <table>
-      <tr><th>Game</th><th>Matchup</th></tr>
-      <tr><td>QF1</td><td>Winner PO2 vs Winner PO1</td></tr>
-      <tr><td>QF2</td><td>Winner PO4 vs Winner PO3</td></tr>
-      <tr><td>QF3</td><td>Winner PO6 vs Winner PO5</td></tr>
-      <tr><td>QF4</td><td>Winner PO8 vs Winner PO7</td></tr>
-    </table>
-    <h3>Semi-Finals &amp; Final</h3>
-    <table>
-      <tr><th>Game</th><th>Matchup</th></tr>
-      <tr><td>SF1</td><td>Winner QF2 vs Winner QF1</td></tr>
-      <tr><td>SF2</td><td>Winner QF4 vs Winner QF3</td></tr>
-      <tr><td>Final</td><td>Winner SF2 vs Winner SF1</td></tr>
-    </table>
-    <p class="small" style="margin-top:12px;">Higher seed is home team (white jerseys).</p>
-  </div>
-
-  <div class="card">
-    <h2>Replacement Seeding</h2>
-    <p class="small">This tournament uses <b>Replacement Seeding</b> for all playoff games:</p>
+    <h3>Elimination Games (1/8 round, Quarter-Finals)</h3>
     <ul>
-      <li>When a lower-ranked team beats a higher-ranked team, the winner <b>takes over</b> the defeated team's seed</li>
-      <li>Example: If Rank 16 beats Rank 1, the Rank 16 team becomes the new #1 seed for the rest of the tournament</li>
-      <li>This rewards upsets and keeps higher seeds as home teams in later rounds</li>
+      <li>Single 5-minute overtime period, stop time</li>
+      <li>3v3 plus goaltender (except penalized players)</li>
+      <li>First goal scored ends the game</li>
+      <li>Penalty = add 1 player to the non-penalized team</li>
+      <li>If still tied after 5 minutes: shootout</li>
+    </ul>
+
+    <h3>Semi-Finals & Finals</h3>
+    <ul>
+      <li>Single 10-minute overtime period, stop time</li>
+      <li>3v3 plus goaltender (except penalized players)</li>
+      <li>First goal scored ends the game</li>
+      <li>Penalty = add 1 player to the non-penalized team</li>
+      <li>If still tied after 10 minutes: shootout</li>
     </ul>
   </div>
 
   <div class="card">
-    <h2>Playoff Rules</h2>
+    <h2>Shootout Rules</h2>
+    <p class="small">Article 9.6.2 - Hockey Quebec Administrative Regulations</p>
     <ul>
-      <li><b>Overtime:</b> 10 min 3v3, then shootout (no ties in playoffs)</li>
-      <li><b>Championship OT:</b> 10 min 3v3, then 20 min periods until winner</li>
-      <li><b>AP Players:</b> Players on higher teams can't play for their main team until the lower team is eliminated</li>
+      <li><b>Home team</b> chooses to shoot 1st or 2nd</li>
+      <li><b>Round 1:</b> Each coach designates 3 players to shoot</li>
+      <li>Shots taken in alternating turns (no simultaneous shots)</li>
+      <li>If still tied after Round 1, coaches designate players one at a time</li>
+      <li>All players (except goaltender) must shoot before anyone goes again</li>
+      <li>Players serving penalties at end of overtime may participate</li>
+      <li>Penalty shot playing rules are in effect</li>
+      <li>Team with most goals in a completed round wins</li>
     </ul>
+  </div>
+
+  <div class="card">
+    <h2>Protests</h2>
+    <p class="small">Article 7.4 - Hockey Quebec Administrative Regulations</p>
+    <ul>
+      <li>No protest on an official's judgment call (referee, linesman) will be considered</li>
+      <li><b>Step 1:</b> Notice of protest must be given to the referee at time of infraction or next stoppage. Must be recorded on the scoresheet.</li>
+      <li><b>Step 2:</b> Follow up in writing within 1 hour after the game to the registrar, accompanied by a $200 cash deposit or bank transfer.</li>
+      <li>Deposit refunded only if the claimant receives a favourable decision</li>
+      <li>Tournament discipline committee decisions are <b>irrevocable and cannot be appealed</b></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Ineligible Members</h2>
+    <p class="small">Article 2.4 - Hockey Quebec Administrative Regulations</p>
+    <ul>
+      <li>Submit complaint in writing to the arena registrar within 1 hour after the game</li>
+      <li>Must include proof of ineligibility and a $200 cash deposit</li>
+      <li>Deposit refunded only if the claimant receives a favourable decision</li>
+      <li>The committee's decision is binding</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Additional Rules</h2>
+    <ul>
+      <li>Any player suspended in their league must have served the suspension before playing in the tournament. Suspensions cannot be served during exhibition games.</li>
+      <li>All players automatically grant the tournament rights to use their image for publicity, photos, social media, etc.</li>
+      <li>No mascots or flag bearers on the ice or players' bench</li>
+      <li>Teams shake hands at end of games (officials may cancel if incident occurs)</li>
+      <li>A medical clinic will be set up in each arena</li>
+      <li>Use of tournament logo without permission is strictly forbidden</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Registration Fees</h2>
+    <p class="small">3 guaranteed games per team</p>
+    <table>
+      <tr><th>Team Origin</th><th>Fee</th></tr>
+      <tr><td>Quebec teams</td><td>$722 CAD</td></tr>
+      <tr><td>Canadian teams (outside Quebec)</td><td>$1,500 CAD</td></tr>
+      <tr><td>United States teams</td><td>$1,200 USD</td></tr>
+      <tr><td>European / other teams</td><td>$1,500 CAD</td></tr>
+    </table>
+    <p class="section-note">Payment by bank transfer upon acceptance. No reimbursement for withdrawals after acceptance.</p>
+  </div>
+
+  <div class="card">
+    <h2>Important Dates</h2>
+    <table>
+      <tr><th>Date</th><th>Milestone</th></tr>
+      <tr><td>Apr 15, 2025</td><td>Registration launch</td></tr>
+      <tr><td>Oct 15, 2025</td><td>Registration deadline</td></tr>
+      <tr><td>Nov 15, 2025</td><td>Team acceptance confirmed</td></tr>
+      <tr><td>Dec 5, 2025</td><td>Payment & documents deadline</td></tr>
+      <tr><td>Dec 15, 2025</td><td>Schedule confirmation (approx.)</td></tr>
+      <tr><td>Feb 12-22, 2026</td><td><b>Tournament</b></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Accommodation</h2>
+    <p style="font-size:14px;line-height:1.6;">
+      This tournament follows a <b>"Play and Stay"</b> formula. All persons related to your team who need accommodation must stay at one of the official hotel partners. Teams from the Greater Montreal area may be exempted with organizing committee approval.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Executive Committee</h2>
+    <table>
+      <tr><th>Role</th><th>Name</th></tr>
+      <tr><td>President</td><td>Martin Lavallee</td></tr>
+      <tr><td>Vice President</td><td>Marie-Christine Boucher</td></tr>
+      <tr><td>Executive Director</td><td>Frederic Chabot</td></tr>
+      <tr><td>Assistant Director</td><td>Dominic Beaudry</td></tr>
+    </table>
+    <p class="small" style="margin-top:8px;">1950, rue Claude-Gagne, Laval, QC, H7N 0E4</p>
   </div>
 </div>
 
 <div class="nav">
   <div class="nav-inner">
-    <a href="/">← Back to Standings</a>
+    <a href="/">&#8592; Back to Standings</a>
   </div>
 </div>
 </body>

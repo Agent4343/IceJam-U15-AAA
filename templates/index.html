@@ -447,14 +447,20 @@ async function fetchSpordle() {
 
       // Show debug info to help diagnose
       if (d.debug) {
-        if (d.debug.page_props_keys) {
-          details += `<br><small>pageProps keys: ${JSON.stringify(d.debug.page_props_keys)}</small>`;
+        if (d.debug.csp_connect_src && d.debug.csp_connect_src.length) {
+          details += `<br><small>API domains (CSP): ${d.debug.csp_connect_src.filter(s => s.includes('spordle')).join(', ')}</small>`;
         }
-        if (d.debug.lists_in_next_data) {
-          details += `<br><small>Data lists: ${JSON.stringify(d.debug.lists_in_next_data.slice(0, 5))}</small>`;
+        if (d.debug.config_api_urls && d.debug.config_api_urls.length) {
+          details += `<br><small>Config URLs: ${d.debug.config_api_urls.map(u => u.value).join(', ')}</small>`;
         }
-        if (d.debug.embedded_api_urls && d.debug.embedded_api_urls.length) {
-          details += `<br><small>API URLs found: ${d.debug.embedded_api_urls.join(', ')}</small>`;
+        if (d.debug.csp_api_hit) {
+          details += `<br><small>API hit: ${d.debug.csp_api_hit}</small>`;
+        }
+        if (d.debug.csp_api_responses) {
+          details += `<br><small>API responses: ${JSON.stringify(d.debug.csp_api_responses.slice(0, 3))}</small>`;
+        }
+        if (d.tried) {
+          details += `<br><small>Tried ${d.tried.length} URLs</small>`;
         }
       }
 
@@ -462,8 +468,9 @@ async function fetchSpordle() {
         msg += `<br><br><a href="${d.spordle_url}" target="_blank" style="color:#4da3ff;">Open Spordle page manually</a>`;
       }
 
-      // Add debug link
-      details += `<br><br><a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;font-size:12px;">View full debug data</a>`;
+      // Add debug links
+      details += `<br><br><a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;font-size:12px;">Debug: Page Data</a>`;
+      details += ` | <a href="/api/spordle/scan-js" target="_blank" style="color:#4da3ff;font-size:12px;">Debug: Scan JS</a>`;
 
       status.innerHTML = `<div class="msg error">${msg}${details}</div>`;
     }

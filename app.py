@@ -618,6 +618,24 @@ def _parse_spordle_games(games_raw: list, division: str) -> list:
     return imported
 
 
+def _deep_find_strings(obj, prefix="", max_depth=5, filter_fn=None) -> list:
+    """Recursively find string values in a nested dict, optionally filtered."""
+    results = []
+    if max_depth <= 0:
+        return results
+    if isinstance(obj, str):
+        if filter_fn is None or filter_fn(obj):
+            results.append({"path": prefix, "value": obj[:300]})
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            cp = f"{prefix}.{k}" if prefix else k
+            results.extend(_deep_find_strings(v, cp, max_depth - 1, filter_fn))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj[:10]):
+            results.extend(_deep_find_strings(v, f"{prefix}[{i}]", max_depth - 1, filter_fn))
+    return results
+
+
 @app.get("/api/spordle/debug")
 def debug_spordle(
     schedule_id: str = Query(default=SPORDLE_AAA_ELITE_SCHEDULE),
@@ -626,7 +644,7 @@ def debug_spordle(
     headers = _spordle_headers(schedule_id)
     page_url = f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}"
 
-    result = {"page_url": page_url, "next_data": None, "api_urls_found": [], "lists_found": [], "page_props_keys": None}
+    result = {"page_url": page_url}
 
     try:
         req = URLRequest(page_url, headers=headers)
@@ -638,48 +656,132 @@ def debug_spordle(
             match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
             if match:
                 next_data = json.loads(match.group(1))
-                result["next_data_keys"] = list(next_data.keys())
-
-                # Show pageProps structure
-                page_props = _navigate(next_data, "props.pageProps")
-                if page_props and isinstance(page_props, dict):
-                    result["page_props_keys"] = list(page_props.keys())
-                    # Show sub-keys for each pageProps entry
-                    for k, v in page_props.items():
-                        if isinstance(v, dict):
-                            result[f"pageProps.{k}_keys"] = list(v.keys())[:20]
-                        elif isinstance(v, list):
-                            result[f"pageProps.{k}_len"] = len(v)
-                            if v and isinstance(v[0], dict):
-                                result[f"pageProps.{k}_sample_keys"] = list(v[0].keys())[:15]
-                        elif isinstance(v, str) and len(v) < 200:
-                            result[f"pageProps.{k}"] = v
-
-                # Find all lists in the data
-                result["lists_found"] = _deep_find_lists(next_data)
-
-                # Find any API URLs
-                result["api_urls_found"] = _extract_api_urls(next_data)
-
-                # Look for buildId (useful for Next.js API routes)
                 result["buildId"] = next_data.get("buildId")
 
-            # Also look for any fetch/XHR URLs in the JavaScript
-            api_matches = re.findall(r'(?:fetch|axios|get|post)\s*\(\s*["\']([^"\']+spordle[^"\']*)["\']', html)
-            if api_matches:
-                result["js_api_calls"] = api_matches[:10]
+                # Deep dive into spordleClient
+                spordle_client = _navigate(next_data, "props.pageProps.spordleClient")
+                if spordle_client and isinstance(spordle_client, dict):
+                    result["spordleClient_keys"] = list(spordle_client.keys())
 
-            # Look for GraphQL endpoints
-            gql_matches = re.findall(r'["\']([^"\']*graphql[^"\']*)["\']', html, re.IGNORECASE)
-            if gql_matches:
-                result["graphql_endpoints"] = gql_matches[:5]
+                    # Show top-level structure of each key
+                    for k, v in spordle_client.items():
+                        if k == "metadata":
+                            continue  # skip CSP etc
+                        if isinstance(v, dict):
+                            result[f"spordleClient.{k}_keys"] = list(v.keys())[:30]
+                            # One more level deep
+                            for k2, v2 in v.items():
+                                if isinstance(v2, dict):
+                                    result[f"spordleClient.{k}.{k2}_keys"] = list(v2.keys())[:20]
+                                elif isinstance(v2, str) and len(v2) < 300:
+                                    result[f"spordleClient.{k}.{k2}"] = v2
+                                elif isinstance(v2, (int, float, bool)):
+                                    result[f"spordleClient.{k}.{k2}"] = v2
+                        elif isinstance(v, str) and len(v) < 300:
+                            result[f"spordleClient.{k}"] = v
+                        elif isinstance(v, (int, float, bool)):
+                            result[f"spordleClient.{k}"] = v
 
-            # Look for API base URL patterns
-            base_matches = re.findall(r'["\']?(https?://[^"\']*(?:api|spordle)[^"\']*)["\']?', html)
-            if base_matches:
-                # Deduplicate and limit
-                unique = list(dict.fromkeys(base_matches))[:20]
-                result["api_base_urls_in_html"] = unique
+                    # Find ALL URL strings in spordleClient
+                    url_strings = _deep_find_strings(
+                        spordle_client, "spordleClient",
+                        max_depth=6,
+                        filter_fn=lambda s: s.startswith("http") and len(s) < 300
+                    )
+                    result["urls_in_spordleClient"] = url_strings
+
+                    # Find connect-src in CSP (this tells us what APIs the page talks to)
+                    csp = _navigate(spordle_client, "metadata.csp")
+                    if csp and isinstance(csp, dict):
+                        result["csp_keys"] = list(csp.keys())
+                        connect_src = csp.get("connect-src")
+                        if connect_src:
+                            result["csp_connect_src"] = connect_src if isinstance(connect_src, list) else [connect_src]
+                        # Also check default-src
+                        for csp_key in ["connect-src", "default-src", "script-src"]:
+                            val = csp.get(csp_key)
+                            if val:
+                                result[f"csp_{csp_key.replace('-', '_')}"] = val
+
+            # Find ALL URLs in the full HTML (API endpoints)
+            api_urls_in_html = re.findall(r'https?://[a-zA-Z0-9._/-]*(?:api|spordle)[a-zA-Z0-9._/-]*', html)
+            unique_urls = list(dict.fromkeys(api_urls_in_html))[:30]
+            result["api_urls_in_html"] = unique_urls
+
+            # Find _next/static JS chunk URLs to analyze
+            js_chunks = re.findall(r'/_next/static/[^"\']+\.js', html)
+            result["js_chunks"] = js_chunks[:10]
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+@app.get("/api/spordle/scan-js")
+def scan_spordle_js(
+    schedule_id: str = Query(default=SPORDLE_AAA_ELITE_SCHEDULE),
+):
+    """Scan Spordle JS chunks to find the actual API endpoints used for game data."""
+    headers = _spordle_headers(schedule_id)
+    page_url = f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}"
+
+    result = {"api_endpoints": [], "schedule_patterns": [], "graphql": []}
+
+    try:
+        req = URLRequest(page_url, headers=headers)
+        with urlopen(req, timeout=15) as resp:
+            html = resp.read().decode()
+
+        # Find JS chunk URLs
+        js_chunks = re.findall(r'(/_next/static/[^"\']+\.js)', html)
+        result["chunks_found"] = len(js_chunks)
+
+        # Fetch and analyze each chunk (limit to avoid timeout)
+        for chunk_path in js_chunks[:15]:
+            chunk_url = f"https://page.spordle.com{chunk_path}"
+            try:
+                req = URLRequest(chunk_url, headers=headers)
+                with urlopen(req, timeout=8) as resp:
+                    js_code = resp.read().decode()
+
+                # Look for API endpoint patterns
+                # Patterns like: "/api/v1/schedules", "/games", "schedule" + "games" etc.
+                api_patterns = re.findall(r'["\'](/(?:api|v[12])/[^"\']{3,60})["\']', js_code)
+                for p in api_patterns:
+                    if p not in result["api_endpoints"]:
+                        result["api_endpoints"].append(p)
+
+                # Look for full URLs with api/spordle
+                full_urls = re.findall(r'["\']?(https?://[^"\']*(?:api|spordle)[^"\']{0,100})["\']?', js_code)
+                for u in full_urls:
+                    if u not in result.get("full_api_urls", []):
+                        result.setdefault("full_api_urls", []).append(u)
+
+                # Look for schedule/game related patterns
+                sched_patterns = re.findall(r'["\']([^"\']*(?:schedule|game|standing|classement)[^"\']{0,80})["\']', js_code, re.IGNORECASE)
+                for p in sched_patterns:
+                    if len(p) < 120 and p not in result["schedule_patterns"]:
+                        result["schedule_patterns"].append(p)
+
+                # Look for GraphQL queries about games
+                gql = re.findall(r'(?:query|mutation)\s+\w*(?:game|schedule|standing)[^}]{0,300}', js_code, re.IGNORECASE)
+                for g in gql:
+                    result["graphql"].append(g[:200])
+
+                # Look for fetch/axios calls
+                fetch_calls = re.findall(r'(?:fetch|axios|\.get|\.post)\s*\(\s*[`"\']([^`"\']{5,120})[`"\']', js_code)
+                for f in fetch_calls:
+                    if f not in result.get("fetch_calls", []):
+                        result.setdefault("fetch_calls", []).append(f)
+
+            except Exception:
+                continue
+
+        # Limit results
+        for key in result:
+            if isinstance(result[key], list) and len(result[key]) > 30:
+                result[key] = result[key][:30]
 
     except Exception as e:
         result["error"] = str(e)
@@ -794,6 +896,75 @@ def fetch_spordle(
                                 if any(k in ks for k in ["team", "home", "away", "score"]):
                                     games_raw = _navigate(data, li["path"]) or []
                                     break
+
+                    # ── Strategy 3: Use CSP connect-src to find API domains ──
+                    if not games_raw:
+                        spordle_client = _navigate(next_data, "props.pageProps.spordleClient") or {}
+                        csp = _navigate(spordle_client, "metadata.csp") or {}
+                        connect_src = csp.get("connect-src", [])
+                        if isinstance(connect_src, str):
+                            connect_src = [connect_src]
+                        debug_info["csp_connect_src"] = connect_src
+
+                        # Also find API URLs in spordleClient config
+                        config_urls = _deep_find_strings(
+                            spordle_client, "", max_depth=6,
+                            filter_fn=lambda s: s.startswith("http") and "api" in s.lower()
+                        )
+                        debug_info["config_api_urls"] = config_urls
+
+                        # Try API domains from CSP and config
+                        api_domains = set()
+                        for item in connect_src:
+                            if isinstance(item, str) and "spordle" in item.lower():
+                                api_domains.add(item.rstrip("/"))
+                        for item in config_urls:
+                            if isinstance(item, dict) and "value" in item:
+                                api_domains.add(item["value"].rstrip("/"))
+
+                        # Try game endpoints on discovered API domains
+                        game_paths = [
+                            f"/api/v1/schedules/{schedule_id}/games",
+                            f"/api/v2/schedules/{schedule_id}/games",
+                            f"/api/v1/public/schedules/{schedule_id}/games",
+                            f"/api/v1/schedule/{schedule_id}/games",
+                            f"/api/v1/games?scheduleId={schedule_id}",
+                            f"/api/v1/games?schedule_id={schedule_id}",
+                            f"/api/v2/page-tree/{SPORDLE_ORG}/schedules/{schedule_id}/games",
+                            f"/api/v1/page-tree/{SPORDLE_ORG}/pages/{SPORDLE_PAGE_UUID}/schedules/{schedule_id}/games",
+                            f"/schedules/{schedule_id}/games",
+                            f"/public/schedules/{schedule_id}/games",
+                            f"/api/v1/standings?scheduleId={schedule_id}",
+                            f"/api/v1/schedule-standings/{schedule_id}",
+                        ]
+                        for domain in api_domains:
+                            for path in game_paths:
+                                url = domain + path
+                                tried.append(url)
+                                data, err = _try_fetch_json(url, {**headers, "Accept": "application/json"})
+                                if data:
+                                    debug_info["csp_api_hit"] = url
+                                    if isinstance(data, list) and len(data) > 0:
+                                        games_raw = data
+                                    elif isinstance(data, dict):
+                                        # Accept ANY response with data - store for debug
+                                        debug_info["csp_api_response_keys"] = list(data.keys())[:20]
+                                        for li in _deep_find_lists(data):
+                                            ks = " ".join(li.get("sample_keys", [])).lower()
+                                            if any(k in ks for k in ["team", "home", "away", "score", "goal", "name"]):
+                                                games_raw = _navigate(data, li["path"]) or []
+                                                break
+                                        if not games_raw and data:
+                                            # Even if we can't find games, store the response structure
+                                            debug_info.setdefault("csp_api_responses", []).append({
+                                                "url": url,
+                                                "keys": list(data.keys())[:20] if isinstance(data, dict) else f"type={type(data).__name__}",
+                                                "lists": _deep_find_lists(data)[:5],
+                                            })
+                                    if games_raw:
+                                        break
+                            if games_raw:
+                                break
 
                 # Look for other embedded JSON data
                 if not games_raw:

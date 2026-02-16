@@ -439,16 +439,33 @@ async function fetchSpordle() {
 
     if (d.ok && d.games_found > 0) {
       const imported = d.auto_imported || 0;
-      status.innerHTML = `<div class="msg success">Found ${d.games_found} games, imported ${imported}.</div>`;
+      status.innerHTML = `<div class="msg success">Found ${d.games_found} games, imported ${imported}. Refreshing standings...</div>`;
       loadStandings();
-    } else if (d.ok && d.games_found === 0) {
-      status.innerHTML = `<div class="msg info">Connected to Spordle but couldn't parse game data. Raw keys: ${JSON.stringify(d.raw_keys)}. Try pasting JSON manually.</div>`;
     } else {
-      let msg = d.error || 'Could not reach Spordle';
+      let msg = d.error || 'Connected to Spordle but no games found.';
+      let details = '';
+
+      // Show debug info to help diagnose
+      if (d.debug) {
+        if (d.debug.page_props_keys) {
+          details += `<br><small>pageProps keys: ${JSON.stringify(d.debug.page_props_keys)}</small>`;
+        }
+        if (d.debug.lists_in_next_data) {
+          details += `<br><small>Data lists: ${JSON.stringify(d.debug.lists_in_next_data.slice(0, 5))}</small>`;
+        }
+        if (d.debug.embedded_api_urls && d.debug.embedded_api_urls.length) {
+          details += `<br><small>API URLs found: ${d.debug.embedded_api_urls.join(', ')}</small>`;
+        }
+      }
+
       if (d.spordle_url) {
         msg += `<br><br><a href="${d.spordle_url}" target="_blank" style="color:#4da3ff;">Open Spordle page manually</a>`;
       }
-      status.innerHTML = `<div class="msg error">${msg}</div>`;
+
+      // Add debug link
+      details += `<br><br><a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;font-size:12px;">View full debug data</a>`;
+
+      status.innerHTML = `<div class="msg error">${msg}${details}</div>`;
     }
   } catch (e) {
     status.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;

@@ -478,14 +478,213 @@ SPORDLE_ORG = "tournoi-international-de-hockey-m15-du-grand-montreal"
 SPORDLE_PAGE_UUID = "0b7dd40b-e3bf-4b03-8a2a-9c7060714a65"
 SPORDLE_AAA_ELITE_SCHEDULE = "186656"
 
-# Spordle API endpoint patterns to try (server-side fetch)
-SPORDLE_API_URLS = [
-    "https://page-api.spordle.com/api/v2/page-tree/{org}/schedule/{sid}/games",
-    "https://page-api.spordle.com/api/v1/schedules/{sid}/games",
-    "https://api.spordle.com/page/api/v1/public/schedule/{sid}/games",
-    "https://play-api.spordle.com/api/v1/public/schedules/{sid}/games",
-    "https://page-api.spordle.com/api/v2/schedules/{sid}/games",
-]
+
+def _spordle_headers(schedule_id: str) -> dict:
+    return {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json, text/html, */*",
+        "Referer": f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}",
+    }
+
+
+def _deep_find_lists(obj, path="", max_depth=6) -> list:
+    """Recursively find all lists in a nested dict, return (path, length, sample_keys)."""
+    results = []
+    if max_depth <= 0:
+        return results
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            cp = f"{path}.{k}" if path else k
+            if isinstance(v, list):
+                sample_keys = []
+                if v and isinstance(v[0], dict):
+                    sample_keys = list(v[0].keys())[:10]
+                results.append({"path": cp, "length": len(v), "sample_keys": sample_keys})
+            results.extend(_deep_find_lists(v, cp, max_depth - 1))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj[:3]):  # only check first 3 items
+            results.extend(_deep_find_lists(v, f"{path}[{i}]", max_depth - 1))
+    return results
+
+
+def _extract_api_urls(obj, found=None, depth=0) -> list:
+    """Find any URL strings in the data that point to Spordle APIs."""
+    if found is None:
+        found = []
+    if depth > 6:
+        return found
+    if isinstance(obj, str) and ("spordle" in obj.lower() or "api" in obj.lower()) and obj.startswith("http"):
+        found.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _extract_api_urls(v, found, depth + 1)
+    elif isinstance(obj, list):
+        for v in obj[:20]:
+            _extract_api_urls(v, found, depth + 1)
+    return found
+
+
+def _navigate(obj, dotpath: str):
+    """Navigate a nested dict/list by dot-separated path. Returns None on failure."""
+    for part in dotpath.split("."):
+        if isinstance(obj, dict):
+            obj = obj.get(part)
+        elif isinstance(obj, list) and part.isdigit():
+            idx = int(part)
+            obj = obj[idx] if idx < len(obj) else None
+        else:
+            return None
+        if obj is None:
+            return None
+    return obj
+
+
+def _try_fetch_json(url: str, headers: dict, timeout: int = 10):
+    """Try to fetch JSON from a URL, return (data, error)."""
+    try:
+        req = URLRequest(url, headers=headers)
+        with urlopen(req, timeout=timeout) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode()), None
+    except Exception as e:
+        return None, str(e)
+    return None, "non-200"
+
+
+def _parse_spordle_games(games_raw: list, division: str) -> list:
+    """Convert raw Spordle game objects to our format."""
+    imported = []
+    for g in games_raw:
+        if not isinstance(g, dict):
+            continue
+        try:
+            # Try many possible field name patterns
+            team_a = ""
+            team_b = ""
+            goals_a = None
+            goals_b = None
+
+            # Home team name
+            for path in ["homeTeam.short_name", "homeTeam.name", "homeTeam.team_name",
+                          "home_team.short_name", "home_team.name", "home.name",
+                          "home_team_name", "teamA", "team_a", "home"]:
+                val = _navigate(g, path)
+                if val and isinstance(val, str):
+                    team_a = val
+                    break
+
+            # Away team name
+            for path in ["awayTeam.short_name", "awayTeam.name", "awayTeam.team_name",
+                          "away_team.short_name", "away_team.name", "away.name",
+                          "away_team_name", "teamB", "team_b", "away"]:
+                val = _navigate(g, path)
+                if val and isinstance(val, str):
+                    team_b = val
+                    break
+
+            # Scores
+            for key in ["home_score", "homeScore", "score_home", "goals_a",
+                         "home_goals", "homeGoals", "result.home"]:
+                val = _navigate(g, key)
+                if val is not None:
+                    goals_a = int(val)
+                    break
+            for key in ["away_score", "awayScore", "score_away", "goals_b",
+                         "away_goals", "awayGoals", "result.away"]:
+                val = _navigate(g, key)
+                if val is not None:
+                    goals_b = int(val)
+                    break
+
+            if not team_a or not team_b:
+                continue
+            if goals_a is None or goals_b is None:
+                continue
+
+            ot = bool(g.get("overtime") or g.get("ot") or g.get("is_overtime")
+                      or g.get("period", 0) > 3
+                      or (g.get("result", {}) or {}).get("overtime"))
+
+            imported.append({
+                "team_a": str(team_a).strip(),
+                "team_b": str(team_b).strip(),
+                "goals_a": goals_a,
+                "goals_b": goals_b,
+                "division": division,
+                "ot": ot,
+            })
+        except Exception:
+            continue
+    return imported
+
+
+@app.get("/api/spordle/debug")
+def debug_spordle(
+    schedule_id: str = Query(default=SPORDLE_AAA_ELITE_SCHEDULE),
+):
+    """Debug endpoint: show what Spordle returns so we can find the game data."""
+    headers = _spordle_headers(schedule_id)
+    page_url = f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}"
+
+    result = {"page_url": page_url, "next_data": None, "api_urls_found": [], "lists_found": [], "page_props_keys": None}
+
+    try:
+        req = URLRequest(page_url, headers=headers)
+        with urlopen(req, timeout=15) as resp:
+            html = resp.read().decode()
+            result["html_size"] = len(html)
+
+            # Extract __NEXT_DATA__
+            match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+            if match:
+                next_data = json.loads(match.group(1))
+                result["next_data_keys"] = list(next_data.keys())
+
+                # Show pageProps structure
+                page_props = _navigate(next_data, "props.pageProps")
+                if page_props and isinstance(page_props, dict):
+                    result["page_props_keys"] = list(page_props.keys())
+                    # Show sub-keys for each pageProps entry
+                    for k, v in page_props.items():
+                        if isinstance(v, dict):
+                            result[f"pageProps.{k}_keys"] = list(v.keys())[:20]
+                        elif isinstance(v, list):
+                            result[f"pageProps.{k}_len"] = len(v)
+                            if v and isinstance(v[0], dict):
+                                result[f"pageProps.{k}_sample_keys"] = list(v[0].keys())[:15]
+                        elif isinstance(v, str) and len(v) < 200:
+                            result[f"pageProps.{k}"] = v
+
+                # Find all lists in the data
+                result["lists_found"] = _deep_find_lists(next_data)
+
+                # Find any API URLs
+                result["api_urls_found"] = _extract_api_urls(next_data)
+
+                # Look for buildId (useful for Next.js API routes)
+                result["buildId"] = next_data.get("buildId")
+
+            # Also look for any fetch/XHR URLs in the JavaScript
+            api_matches = re.findall(r'(?:fetch|axios|get|post)\s*\(\s*["\']([^"\']+spordle[^"\']*)["\']', html)
+            if api_matches:
+                result["js_api_calls"] = api_matches[:10]
+
+            # Look for GraphQL endpoints
+            gql_matches = re.findall(r'["\']([^"\']*graphql[^"\']*)["\']', html, re.IGNORECASE)
+            if gql_matches:
+                result["graphql_endpoints"] = gql_matches[:5]
+
+            # Look for API base URL patterns
+            base_matches = re.findall(r'["\']?(https?://[^"\']*(?:api|spordle)[^"\']*)["\']?', html)
+            if base_matches:
+                # Deduplicate and limit
+                unique = list(dict.fromkeys(base_matches))[:20]
+                result["api_base_urls_in_html"] = unique
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
 
 
 @app.get("/api/spordle/fetch")
@@ -496,120 +695,143 @@ def fetch_spordle(
 ):
     """
     Fetch game data from Spordle (server-side). Railway can reach Spordle directly.
-    Tries multiple API endpoint patterns.
+    Tries multiple strategies to find game data.
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Accept": "application/json, text/html, */*",
-        "Referer": f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}",
-    }
-
-    # Try fetching the Spordle page HTML first to find embedded data or API URLs
+    headers = _spordle_headers(schedule_id)
     page_url = f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}"
     tried = []
-    raw_data = None
+    games_raw = []
+    debug_info = {}
 
-    # Try known API patterns
-    for pattern in SPORDLE_API_URLS:
-        url = pattern.format(org=SPORDLE_ORG, sid=schedule_id)
+    # ── Strategy 1: Try known API patterns ──
+    api_patterns = [
+        "https://page-api.spordle.com/api/v2/page-tree/{org}/schedule/{sid}/games",
+        "https://page-api.spordle.com/api/v1/schedules/{sid}/games",
+        "https://api.spordle.com/page/api/v1/public/schedule/{sid}/games",
+        "https://play-api.spordle.com/api/v1/public/schedules/{sid}/games",
+        "https://page-api.spordle.com/api/v2/schedules/{sid}/games",
+        "https://page-api.spordle.com/api/v1/page-tree/{org}/pages/{page}/components",
+        "https://page-api.spordle.com/api/v1/schedules/{sid}",
+        "https://page-api.spordle.com/public/api/v1/schedules/{sid}/games",
+        "https://page-api.spordle.com/api/v1/page/{page}/schedule/{sid}",
+    ]
+    for pattern in api_patterns:
+        url = pattern.format(org=SPORDLE_ORG, sid=schedule_id, page=SPORDLE_PAGE_UUID)
         tried.append(url)
-        try:
-            req = URLRequest(url, headers=headers)
-            with urlopen(req, timeout=10) as resp:
-                if resp.status == 200:
-                    raw_data = json.loads(resp.read().decode())
-                    break
-        except Exception as e:
-            logger.info(f"Spordle API {url}: {e}")
-            continue
+        data, err = _try_fetch_json(url, {**headers, "Accept": "application/json"})
+        if data:
+            debug_info["api_hit"] = url
+            # Try to extract games from this response
+            if isinstance(data, list):
+                games_raw = data
+            elif isinstance(data, dict):
+                # Look for game arrays
+                for linfo in _deep_find_lists(data):
+                    if any(k in " ".join(linfo.get("sample_keys", [])).lower()
+                           for k in ["team", "home", "away", "score", "goal"]):
+                        games_raw = _navigate(data, linfo["path"]) or []
+                        break
+            if games_raw:
+                break
 
-    # Try the page HTML for embedded data
-    if not raw_data:
+    # ── Strategy 2: Parse the Spordle page HTML ──
+    if not games_raw:
         tried.append(page_url)
         try:
             req = URLRequest(page_url, headers=headers)
             with urlopen(req, timeout=15) as resp:
                 html = resp.read().decode()
-                # Look for __NEXT_DATA__ (Next.js SSR)
-                import re as _re
-                match = _re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
-                if match:
-                    raw_data = json.loads(match.group(1))
-                # Look for inline data
-                if not raw_data:
-                    match = _re.search(r'window\.__(?:INITIAL_STATE|DATA)__\s*=\s*({.*?});', html)
-                    if match:
-                        raw_data = json.loads(match.group(1))
-        except Exception as e:
-            logger.info(f"Spordle page fetch: {e}")
+                debug_info["html_size"] = len(html)
 
-    if not raw_data:
+                # Extract __NEXT_DATA__
+                match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+                if match:
+                    next_data = json.loads(match.group(1))
+
+                    # Find all lists and check for game-like data
+                    all_lists = _deep_find_lists(next_data)
+                    debug_info["lists_in_next_data"] = all_lists
+
+                    for linfo in all_lists:
+                        keys_str = " ".join(linfo.get("sample_keys", [])).lower()
+                        if any(k in keys_str for k in ["team", "home", "away", "score", "goal"]):
+                            games_raw = _navigate(next_data, linfo["path"]) or []
+                            debug_info["games_path"] = linfo["path"]
+                            break
+
+                    # If no game lists found, look for API URLs in the data
+                    if not games_raw:
+                        api_urls = _extract_api_urls(next_data)
+                        debug_info["embedded_api_urls"] = api_urls
+                        for api_url in api_urls:
+                            tried.append(api_url)
+                            data, err = _try_fetch_json(api_url, headers)
+                            if data:
+                                if isinstance(data, list):
+                                    games_raw = data
+                                elif isinstance(data, dict):
+                                    for li in _deep_find_lists(data):
+                                        ks = " ".join(li.get("sample_keys", [])).lower()
+                                        if any(k in ks for k in ["team", "home", "away", "score"]):
+                                            games_raw = _navigate(data, li["path"]) or []
+                                            break
+                                if games_raw:
+                                    break
+
+                    # Also try the buildId for Next.js data routes
+                    build_id = next_data.get("buildId", "")
+                    page_props = _navigate(next_data, "props.pageProps") or {}
+                    debug_info["page_props_keys"] = list(page_props.keys()) if isinstance(page_props, dict) else str(type(page_props))
+
+                    if build_id and not games_raw:
+                        # Next.js data route pattern
+                        data_url = f"https://page.spordle.com/_next/data/{build_id}/en/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}.json?scheduleId={schedule_id}"
+                        tried.append(data_url)
+                        data, err = _try_fetch_json(data_url, headers)
+                        if data:
+                            for li in _deep_find_lists(data):
+                                ks = " ".join(li.get("sample_keys", [])).lower()
+                                if any(k in ks for k in ["team", "home", "away", "score"]):
+                                    games_raw = _navigate(data, li["path"]) or []
+                                    break
+
+                # Look for other embedded JSON data
+                if not games_raw:
+                    for pattern_re in [
+                        r'window\.__(?:INITIAL_STATE|DATA|STORE)__\s*=\s*({.*?});',
+                        r'window\.GAMES\s*=\s*(\[.*?\]);',
+                    ]:
+                        match2 = re.search(pattern_re, html, re.DOTALL)
+                        if match2:
+                            try:
+                                embedded = json.loads(match2.group(1))
+                                if isinstance(embedded, list):
+                                    games_raw = embedded
+                                    break
+                            except json.JSONDecodeError:
+                                pass
+
+        except Exception as e:
+            debug_info["page_error"] = str(e)
+
+    # ── Convert to our format ──
+    imported_games = _parse_spordle_games(games_raw, division)
+
+    if not imported_games and not games_raw:
         return {
             "ok": False,
-            "error": "Could not fetch data from Spordle. The API patterns may have changed.",
+            "error": "Connected to Spordle but couldn't find game data. The game data is likely loaded client-side via JavaScript.",
             "tried": tried,
-            "hint": "Try opening the Spordle page in your browser, copying game data, and pasting it into the Import section.",
+            "debug": debug_info,
+            "hint": "Use the /api/spordle/debug endpoint to explore the data structure, or paste game data manually.",
             "spordle_url": page_url,
         }
-
-    # Try to extract games from the response
-    games_raw = []
-    if isinstance(raw_data, list):
-        games_raw = raw_data
-    elif isinstance(raw_data, dict):
-        # Navigate common response structures
-        for key in ["games", "data", "results", "items", "props.pageProps.games",
-                     "props.pageProps.data.games", "props.pageProps.schedule.games"]:
-            obj = raw_data
-            try:
-                for part in key.split("."):
-                    obj = obj[part] if isinstance(obj, dict) else obj
-                if isinstance(obj, list) and len(obj) > 0:
-                    games_raw = obj
-                    break
-            except (KeyError, TypeError, IndexError):
-                continue
-
-    # Convert to our format
-    imported_games = []
-    for g in games_raw:
-        try:
-            # Try common Spordle field names
-            team_a = (g.get("homeTeam", {}).get("name", "") or
-                      g.get("home_team", {}).get("name", "") or
-                      g.get("home_team_name", "") or
-                      g.get("team_home", {}).get("name", "") or
-                      g.get("teamA", "") or g.get("team_a", ""))
-            team_b = (g.get("awayTeam", {}).get("name", "") or
-                      g.get("away_team", {}).get("name", "") or
-                      g.get("away_team_name", "") or
-                      g.get("team_away", {}).get("name", "") or
-                      g.get("teamB", "") or g.get("team_b", ""))
-            goals_a = (g.get("homeScore", None) or g.get("home_score", None) or
-                       g.get("score_home", None) or g.get("goals_a", None) or 0)
-            goals_b = (g.get("awayScore", None) or g.get("away_score", None) or
-                       g.get("score_away", None) or g.get("goals_b", None) or 0)
-
-            if not team_a or not team_b:
-                continue
-
-            game_data = {
-                "team_a": str(team_a).strip(),
-                "team_b": str(team_b).strip(),
-                "goals_a": int(goals_a),
-                "goals_b": int(goals_b),
-                "division": division,
-                "ot": bool(g.get("overtime", g.get("ot", False))),
-            }
-            imported_games.append(game_data)
-        except Exception:
-            continue
 
     result = {
         "ok": True,
         "games_found": len(imported_games),
         "games": imported_games,
-        "raw_keys": list(raw_data.keys()) if isinstance(raw_data, dict) else f"array[{len(raw_data)}]",
+        "debug": debug_info,
     }
 
     # Auto-import if requested

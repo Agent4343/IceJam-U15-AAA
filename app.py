@@ -40,6 +40,8 @@ import logging
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List, Tuple
 from functools import cmp_to_key
+from urllib.request import urlopen, Request as URLRequest
+from urllib.error import URLError
 
 from fastapi import FastAPI, Query, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
@@ -470,6 +472,170 @@ async def upload_games(file: UploadFile = File(...)):
         "errors": len(errors),
         "error_details": errors[:10],
     }
+
+
+SPORDLE_ORG = "tournoi-international-de-hockey-m15-du-grand-montreal"
+SPORDLE_PAGE_UUID = "0b7dd40b-e3bf-4b03-8a2a-9c7060714a65"
+SPORDLE_AAA_ELITE_SCHEDULE = "186656"
+
+# Spordle API endpoint patterns to try (server-side fetch)
+SPORDLE_API_URLS = [
+    "https://page-api.spordle.com/api/v2/page-tree/{org}/schedule/{sid}/games",
+    "https://page-api.spordle.com/api/v1/schedules/{sid}/games",
+    "https://api.spordle.com/page/api/v1/public/schedule/{sid}/games",
+    "https://play-api.spordle.com/api/v1/public/schedules/{sid}/games",
+    "https://page-api.spordle.com/api/v2/schedules/{sid}/games",
+]
+
+
+@app.get("/api/spordle/fetch")
+def fetch_spordle(
+    schedule_id: str = Query(default=SPORDLE_AAA_ELITE_SCHEDULE, description="Spordle schedule ID"),
+    division: str = Query(default="AAA-Elite", description="Division label to assign"),
+    auto_import: bool = Query(default=False, description="Auto-import fetched games"),
+):
+    """
+    Fetch game data from Spordle (server-side). Railway can reach Spordle directly.
+    Tries multiple API endpoint patterns.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json, text/html, */*",
+        "Referer": f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}",
+    }
+
+    # Try fetching the Spordle page HTML first to find embedded data or API URLs
+    page_url = f"https://page.spordle.com/{SPORDLE_ORG}/schedule-stats-standings/{SPORDLE_PAGE_UUID}?scheduleId={schedule_id}"
+    tried = []
+    raw_data = None
+
+    # Try known API patterns
+    for pattern in SPORDLE_API_URLS:
+        url = pattern.format(org=SPORDLE_ORG, sid=schedule_id)
+        tried.append(url)
+        try:
+            req = URLRequest(url, headers=headers)
+            with urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    raw_data = json.loads(resp.read().decode())
+                    break
+        except Exception as e:
+            logger.info(f"Spordle API {url}: {e}")
+            continue
+
+    # Try the page HTML for embedded data
+    if not raw_data:
+        tried.append(page_url)
+        try:
+            req = URLRequest(page_url, headers=headers)
+            with urlopen(req, timeout=15) as resp:
+                html = resp.read().decode()
+                # Look for __NEXT_DATA__ (Next.js SSR)
+                import re as _re
+                match = _re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+                if match:
+                    raw_data = json.loads(match.group(1))
+                # Look for inline data
+                if not raw_data:
+                    match = _re.search(r'window\.__(?:INITIAL_STATE|DATA)__\s*=\s*({.*?});', html)
+                    if match:
+                        raw_data = json.loads(match.group(1))
+        except Exception as e:
+            logger.info(f"Spordle page fetch: {e}")
+
+    if not raw_data:
+        return {
+            "ok": False,
+            "error": "Could not fetch data from Spordle. The API patterns may have changed.",
+            "tried": tried,
+            "hint": "Try opening the Spordle page in your browser, copying game data, and pasting it into the Import section.",
+            "spordle_url": page_url,
+        }
+
+    # Try to extract games from the response
+    games_raw = []
+    if isinstance(raw_data, list):
+        games_raw = raw_data
+    elif isinstance(raw_data, dict):
+        # Navigate common response structures
+        for key in ["games", "data", "results", "items", "props.pageProps.games",
+                     "props.pageProps.data.games", "props.pageProps.schedule.games"]:
+            obj = raw_data
+            try:
+                for part in key.split("."):
+                    obj = obj[part] if isinstance(obj, dict) else obj
+                if isinstance(obj, list) and len(obj) > 0:
+                    games_raw = obj
+                    break
+            except (KeyError, TypeError, IndexError):
+                continue
+
+    # Convert to our format
+    imported_games = []
+    for g in games_raw:
+        try:
+            # Try common Spordle field names
+            team_a = (g.get("homeTeam", {}).get("name", "") or
+                      g.get("home_team", {}).get("name", "") or
+                      g.get("home_team_name", "") or
+                      g.get("team_home", {}).get("name", "") or
+                      g.get("teamA", "") or g.get("team_a", ""))
+            team_b = (g.get("awayTeam", {}).get("name", "") or
+                      g.get("away_team", {}).get("name", "") or
+                      g.get("away_team_name", "") or
+                      g.get("team_away", {}).get("name", "") or
+                      g.get("teamB", "") or g.get("team_b", ""))
+            goals_a = (g.get("homeScore", None) or g.get("home_score", None) or
+                       g.get("score_home", None) or g.get("goals_a", None) or 0)
+            goals_b = (g.get("awayScore", None) or g.get("away_score", None) or
+                       g.get("score_away", None) or g.get("goals_b", None) or 0)
+
+            if not team_a or not team_b:
+                continue
+
+            game_data = {
+                "team_a": str(team_a).strip(),
+                "team_b": str(team_b).strip(),
+                "goals_a": int(goals_a),
+                "goals_b": int(goals_b),
+                "division": division,
+                "ot": bool(g.get("overtime", g.get("ot", False))),
+            }
+            imported_games.append(game_data)
+        except Exception:
+            continue
+
+    result = {
+        "ok": True,
+        "games_found": len(imported_games),
+        "games": imported_games,
+        "raw_keys": list(raw_data.keys()) if isinstance(raw_data, dict) else f"array[{len(raw_data)}]",
+    }
+
+    # Auto-import if requested
+    if auto_import and imported_games:
+        count = 0
+        for gd in imported_games:
+            try:
+                game_id = str(uuid.uuid4())[:8]
+                game_number = len(games_db) + 1
+                new_game = Game(
+                    game_id=game_id,
+                    team_a=norm(gd["team_a"]),
+                    team_b=norm(gd["team_b"]),
+                    goals_a=gd["goals_a"],
+                    goals_b=gd["goals_b"],
+                    ot=gd.get("ot", False),
+                    game_number=game_number,
+                    division=norm(division),
+                )
+                games_db[game_id] = new_game
+                count += 1
+            except Exception:
+                continue
+        result["auto_imported"] = count
+
+    return result
 
 
 @app.delete("/api/games")

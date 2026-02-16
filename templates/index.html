@@ -165,9 +165,12 @@ label { display:block; font-size:13px; color:#9fb0cf; margin-bottom:4px; margin-
     <button class="toggle-btn" onclick="toggleUpload()">+ Import Games</button>
 
     <div id="upload-section" class="game-entry">
-      <div class="small" style="margin:8px 0;">
-        Paste game data as JSON, or upload a .json file.
-      </div>
+
+      <button onclick="fetchSpordle()" style="background:#4da3ff;">Fetch AAA-Elite from Spordle</button>
+      <div class="small" style="margin:4px 0 8px;">Server fetches directly from Spordle and imports all games.</div>
+      <div id="spordle-status"></div>
+
+      <div style="text-align:center;color:#9fb0cf;font-size:12px;margin:12px 0;">-- or paste/upload manually --</div>
 
       <label>Paste JSON here</label>
       <textarea id="paste-json" rows="6" placeholder='[{"team_a":"Team 1","team_b":"Team 2","goals_a":3,"goals_b":1,"division":"AAA-Elite"}]' style="width:100%;background:#1a2538;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
@@ -424,6 +427,32 @@ async function loadGames() {
 function toggleUpload() {
   const el = document.getElementById('upload-section');
   el.classList.toggle('open');
+}
+
+async function fetchSpordle() {
+  const status = document.getElementById("spordle-status");
+  status.innerHTML = '<div class="msg info">Fetching from Spordle... this may take a few seconds.</div>';
+
+  try {
+    const r = await fetch('/api/spordle/fetch?schedule_id=186656&division=AAA-Elite&auto_import=true');
+    const d = await r.json();
+
+    if (d.ok && d.games_found > 0) {
+      const imported = d.auto_imported || 0;
+      status.innerHTML = `<div class="msg success">Found ${d.games_found} games, imported ${imported}.</div>`;
+      loadStandings();
+    } else if (d.ok && d.games_found === 0) {
+      status.innerHTML = `<div class="msg info">Connected to Spordle but couldn't parse game data. Raw keys: ${JSON.stringify(d.raw_keys)}. Try pasting JSON manually.</div>`;
+    } else {
+      let msg = d.error || 'Could not reach Spordle';
+      if (d.spordle_url) {
+        msg += `<br><br><a href="${d.spordle_url}" target="_blank" style="color:#4da3ff;">Open Spordle page manually</a>`;
+      }
+      status.innerHTML = `<div class="msg error">${msg}</div>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="msg error">Error: ${e.message}</div>`;
+  }
 }
 
 async function importPastedJSON() {

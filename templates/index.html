@@ -159,24 +159,24 @@ label { display:block; font-size:13px; color:#9fb0cf; margin-bottom:4px; margin-
     </div>
   </div>
 
-  <!-- Import Games from JSON -->
+  <!-- Import Games -->
   <div class="card">
-    <div class="card-title">Import Games from Spordle / JSON</div>
-    <button class="toggle-btn" onclick="toggleUpload()">+ Upload JSON File</button>
+    <div class="card-title">Import Games from Spordle</div>
+    <button class="toggle-btn" onclick="toggleUpload()">+ Import Games</button>
 
     <div id="upload-section" class="game-entry">
       <div class="small" style="margin:8px 0;">
-        Upload a JSON file with game results. Format: array of objects with team_a, team_b, goals_a, goals_b, division, etc.
-        <br><br>
-        <b>How to export from Spordle:</b><br>
-        1. Open the <a href="https://page.spordle.com/tournoi-international-de-hockey-m15-du-grand-montreal/schedule-stats-standings/0b7dd40b-e3bf-4b03-8a2a-9c7060714a65?scheduleId=186656" target="_blank" style="color:#4da3ff;">Spordle AAA-Elite page</a><br>
-        2. Open DevTools (F12) &rarr; Network tab &rarr; filter XHR<br>
-        3. Copy the games JSON data &rarr; save as .json file<br>
-        4. Upload here
+        Paste game data as JSON, or upload a .json file.
       </div>
 
+      <label>Paste JSON here</label>
+      <textarea id="paste-json" rows="6" placeholder='[{"team_a":"Team 1","team_b":"Team 2","goals_a":3,"goals_b":1,"division":"AAA-Elite"}]' style="width:100%;background:#1a2538;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-family:monospace;box-sizing:border-box;resize:vertical;"></textarea>
+      <button onclick="importPastedJSON()">Import Pasted Data</button>
+
+      <div style="text-align:center;color:#9fb0cf;font-size:12px;margin:12px 0;">-- or --</div>
+
       <input type="file" id="upload-file" accept=".json" style="margin:8px 0;">
-      <button onclick="uploadJSON()">Upload &amp; Import</button>
+      <button onclick="uploadJSON()">Upload JSON File</button>
       <div id="upload-status"></div>
     </div>
   </div>
@@ -424,6 +424,52 @@ async function loadGames() {
 function toggleUpload() {
   const el = document.getElementById('upload-section');
   el.classList.toggle('open');
+}
+
+async function importPastedJSON() {
+  const status = document.getElementById("upload-status");
+  const textarea = document.getElementById("paste-json");
+  const raw = textarea.value.trim();
+
+  if (!raw) {
+    status.innerHTML = '<div class="msg error">Paste JSON data first</div>';
+    return;
+  }
+
+  let games;
+  try {
+    const parsed = JSON.parse(raw);
+    games = Array.isArray(parsed) ? parsed : (parsed.games || []);
+  } catch (e) {
+    status.innerHTML = '<div class="msg error">Invalid JSON: ' + e.message + '</div>';
+    return;
+  }
+
+  if (!games.length) {
+    status.innerHTML = '<div class="msg error">No games found in pasted data</div>';
+    return;
+  }
+
+  status.innerHTML = '<div class="msg info">Importing ' + games.length + ' game(s)...</div>';
+
+  try {
+    const r = await fetch('/api/games/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(games)
+    });
+    const d = await r.json();
+
+    if (d.ok) {
+      status.innerHTML = '<div class="msg success">Imported ' + d.imported + ' game(s)</div>';
+      textarea.value = '';
+      loadStandings();
+    } else {
+      status.innerHTML = '<div class="msg error">' + (d.detail || 'Import failed') + '</div>';
+    }
+  } catch (e) {
+    status.innerHTML = '<div class="msg error">Error: ' + e.message + '</div>';
+  }
 }
 
 async function uploadJSON() {

@@ -168,6 +168,7 @@ label { display:block; font-size:13px; color:#9fb0cf; margin-bottom:4px; margin-
 
       <button onclick="fetchSpordle()" style="background:#4da3ff;">Fetch AAA-Elite from Spordle</button>
       <div class="small" style="margin:4px 0 8px;">Server fetches directly from Spordle and imports all games.</div>
+      <div class="small"><a href="/api/spordle/raw?tab=schedule" target="_blank" style="color:#4da3ff;">View raw Spordle data</a> | <a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;">Debug</a> | <a href="/api/spordle/scan-js" target="_blank" style="color:#4da3ff;">Scan JS</a></div>
       <div id="spordle-status"></div>
 
       <div style="text-align:center;color:#9fb0cf;font-size:12px;margin:12px 0;">-- or paste/upload manually --</div>
@@ -431,7 +432,7 @@ function toggleUpload() {
 
 async function fetchSpordle() {
   const status = document.getElementById("spordle-status");
-  status.innerHTML = '<div class="msg info">Fetching from Spordle... this may take a few seconds.</div>';
+  status.innerHTML = '<div class="msg info">Fetching from Spordle... this may take 10-20 seconds.</div>';
 
   try {
     const r = await fetch('/api/spordle/fetch?schedule_id=186656&division=AAA-Elite&auto_import=true');
@@ -439,38 +440,40 @@ async function fetchSpordle() {
 
     if (d.ok && d.games_found > 0) {
       const imported = d.auto_imported || 0;
-      status.innerHTML = `<div class="msg success">Found ${d.games_found} games, imported ${imported}. Refreshing standings...</div>`;
+      const src = d.source ? ` (via ${d.source})` : '';
+      status.innerHTML = `<div class="msg success">Found ${d.games_found} games${src}, imported ${imported}. Refreshing standings...</div>`;
       loadStandings();
     } else {
-      let msg = d.error || 'Connected to Spordle but no games found.';
+      let msg = d.error || 'Could not find game data on Spordle.';
       let details = '';
 
-      // Show debug info to help diagnose
       if (d.debug) {
-        if (d.debug.csp_connect_src && d.debug.csp_connect_src.length) {
-          details += `<br><small>API domains (CSP): ${d.debug.csp_connect_src.filter(s => s.includes('spordle')).join(', ')}</small>`;
+        const apiHit = d.debug.api_hit || d.debug.direct_api_hit || d.debug.next_data_hit;
+        if (apiHit) details += `<br><small>API found: ${apiHit}</small>`;
+        if (d.debug.discovered_api_bases) {
+          details += `<br><small>API bases: ${d.debug.discovered_api_bases.join(', ')}</small>`;
         }
-        if (d.debug.config_api_urls && d.debug.config_api_urls.length) {
-          details += `<br><small>Config URLs: ${d.debug.config_api_urls.map(u => u.value).join(', ')}</small>`;
+        if (d.debug.api_responses) {
+          details += `<br><small>API responses: ${JSON.stringify(d.debug.api_responses.slice(0, 2))}</small>`;
         }
-        if (d.debug.csp_api_hit) {
-          details += `<br><small>API hit: ${d.debug.csp_api_hit}</small>`;
-        }
-        if (d.debug.csp_api_responses) {
-          details += `<br><small>API responses: ${JSON.stringify(d.debug.csp_api_responses.slice(0, 3))}</small>`;
-        }
-        if (d.tried) {
-          details += `<br><small>Tried ${d.tried.length} URLs</small>`;
+        if (d.tried_count) details += `<br><small>Tried ${d.tried_count} URLs</small>`;
+
+        // Show data found but not parseable
+        for (const [k, v] of Object.entries(d.debug)) {
+          if (k.includes('potential_data')) {
+            details += `<br><small>Potential data at ${k}: ${JSON.stringify(v).slice(0, 200)}</small>`;
+          }
         }
       }
 
       if (d.spordle_url) {
-        msg += `<br><br><a href="${d.spordle_url}" target="_blank" style="color:#4da3ff;">Open Spordle page manually</a>`;
+        msg += `<br><br><a href="${d.spordle_url}" target="_blank" style="color:#4da3ff;">Open Spordle page</a>`;
       }
 
-      // Add debug links
-      details += `<br><br><a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;font-size:12px;">Debug: Page Data</a>`;
-      details += ` | <a href="/api/spordle/scan-js" target="_blank" style="color:#4da3ff;font-size:12px;">Debug: Scan JS</a>`;
+      details += `<br><br><b>Tip:</b> Open the Spordle page in Chrome, press F12 → Network tab, reload, and look for XHR requests to find the API endpoint.`;
+      details += `<br><a href="/api/spordle/raw?tab=schedule" target="_blank" style="color:#4da3ff;font-size:12px;">Raw Data</a>`;
+      details += ` | <a href="/api/spordle/raw?tab=standings" target="_blank" style="color:#4da3ff;font-size:12px;">Raw Standings</a>`;
+      details += ` | <a href="/api/spordle/debug" target="_blank" style="color:#4da3ff;font-size:12px;">Debug</a>`;
 
       status.innerHTML = `<div class="msg error">${msg}${details}</div>`;
     }
